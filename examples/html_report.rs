@@ -1,28 +1,10 @@
-use chrono::NaiveDate;
-use quantstats_rs::{html, HtmlReportOptions, ReturnSeries};
+mod common;
+
+use quantstats_rs::{html, HtmlReportOptions};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Build a simple fake daily return series for ~3 months
-    let start = NaiveDate::from_ymd_opt(2024, 1, 1).expect("valid date");
-    let mut dates = Vec::new();
-    let mut returns = Vec::new();
-
-    for i in 0..60 {
-        let date = start + chrono::Days::new(i);
-        dates.push(date);
-
-        // Simple pattern: small positive drift with some noise-like variation
-        let r = match i % 5 {
-            0 => 0.005,
-            1 => -0.002,
-            2 => 0.003,
-            3 => 0.0,
-            _ => 0.001,
-        };
-        returns.push(r);
-    }
-
-    let series = ReturnSeries::new(dates, returns, Some("Demo Strategy".to_string()))?;
+    // Use shared demo data from examples/common.rs (generated from data file)
+    let series = common::demo_strategy();
 
     let options = HtmlReportOptions::default()
         .with_title("Quantstats-rs Demo Tearsheet")
@@ -35,4 +17,3 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
-

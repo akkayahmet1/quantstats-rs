@@ -1,41 +1,11 @@
-use chrono::NaiveDate;
-use quantstats_rs::{html, HtmlReportOptions, ReturnSeries};
+mod common;
+
+use quantstats_rs::{html, HtmlReportOptions};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Build strategy returns
-    let start = NaiveDate::from_ymd_opt(2024, 1, 1).expect("valid date");
-    let mut dates = Vec::new();
-    let mut strat_returns = Vec::new();
-    let mut bench_returns = Vec::new();
-
-    for i in 0..60 {
-        let date = start + chrono::Days::new(i);
-        dates.push(date);
-
-        // Strategy: slightly higher volatility and drift
-        let s = match i % 5 {
-            0 => 0.007,
-            1 => -0.004,
-            2 => 0.004,
-            3 => 0.0,
-            _ => 0.002,
-        };
-
-        // Benchmark: smoother, lower returns
-        let b = match i % 5 {
-            0 => 0.004,
-            1 => -0.0015,
-            2 => 0.0025,
-            3 => 0.0,
-            _ => 0.001,
-        };
-
-        strat_returns.push(s);
-        bench_returns.push(b);
-    }
-
-    let strategy = ReturnSeries::new(dates.clone(), strat_returns, Some("Strategy".to_string()))?;
-    let benchmark = ReturnSeries::new(dates, bench_returns, Some("Benchmark".to_string()))?;
+    // Use shared demo data from examples/common.rs (generated from data file)
+    let strategy = common::demo_strategy();
+    let benchmark = common::demo_benchmark();
 
     let options = HtmlReportOptions::default()
         .with_benchmark(&benchmark)
@@ -53,4 +23,3 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
-
