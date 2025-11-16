@@ -889,6 +889,15 @@ fn build_metrics_table(
     }
     html.push_str(&format!("<td>{:.2}</td></tr>", csr_strat));
 
+    // Tail Ratio row (after CPC Index in Python version)
+    html.push_str("<tr><td>Tail Ratio</td>");
+    if let Some(v) = tail_bench {
+        html.push_str(&format!("<td>{:.2}</td>", v));
+    } else if benchmark.is_some() {
+        html.push_str("<td>-</td>");
+    }
+    html.push_str(&format!("<td>{:.2}</td></tr>", tail_strat));
+
     let cpc_strat = pf_strat
         * (max_wins_strat as f64
             / strat_vals
