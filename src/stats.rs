@@ -137,6 +137,21 @@ pub struct Drawdown {
 /// identifies drawdown periods (from a new peak until recovery),
 /// and returns the `top_n` deepest ones.
 pub fn top_drawdowns(returns: &ReturnSeries, top_n: usize) -> Vec<Drawdown> {
+    let mut segments = compute_drawdown_segments(returns);
+
+    // Sort by depth (most negative first) and take top_n
+    segments.sort_by(|a, b| a.depth.partial_cmp(&b.depth).unwrap_or(std::cmp::Ordering::Equal));
+    segments.truncate(top_n);
+
+    segments
+}
+
+/// Compute all drawdown segments (from each peak to full recovery or series end).
+pub fn all_drawdowns(returns: &ReturnSeries) -> Vec<Drawdown> {
+    compute_drawdown_segments(returns)
+}
+
+fn compute_drawdown_segments(returns: &ReturnSeries) -> Vec<Drawdown> {
     let n = returns.values.len();
     if n == 0 {
         return Vec::new();
@@ -218,10 +233,6 @@ pub fn top_drawdowns(returns: &ReturnSeries, top_n: usize) -> Vec<Drawdown> {
             duration,
         });
     }
-
-    // Sort by depth (most negative first) and take top_n
-    segments.sort_by(|a, b| a.depth.partial_cmp(&b.depth).unwrap_or(std::cmp::Ordering::Equal));
-    segments.truncate(top_n);
 
     segments
 }
