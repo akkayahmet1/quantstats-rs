@@ -1,3 +1,5 @@
+use chrono::NaiveDate;
+
 use crate::utils::ReturnSeries;
 
 #[derive(Clone, Debug)]
@@ -8,6 +10,9 @@ pub struct PerformanceMetrics {
     pub sharpe_ratio: f64,
     pub max_drawdown: f64,
     pub max_drawdown_duration: u32,
+    pub max_drawdown_start: Option<NaiveDate>,
+    pub max_drawdown_trough: Option<NaiveDate>,
+    pub max_drawdown_end: Option<NaiveDate>,
     pub best_day: f64,
     pub worst_day: f64,
 }
@@ -32,7 +37,21 @@ pub fn compute_performance_metrics(
         0.0
     };
 
-    let (max_drawdown, max_duration) = max_drawdown(&returns.values);
+    // Use detailed drawdown analysis for max drawdown stats
+    let dd_segments = top_drawdowns(returns, 1);
+    let (max_drawdown, max_duration, max_start, max_trough, max_end) =
+        if let Some(dd) = dd_segments.first() {
+            (
+                dd.depth,
+                dd.duration,
+                Some(dd.start),
+                Some(dd.trough),
+                Some(dd.end),
+            )
+        } else {
+            (0.0, 0, None, None, None)
+        };
+
     let (best_day, worst_day) = best_and_worst(&returns.values);
 
     PerformanceMetrics {
@@ -42,6 +61,9 @@ pub fn compute_performance_metrics(
         sharpe_ratio,
         max_drawdown,
         max_drawdown_duration: max_duration,
+        max_drawdown_start: max_start,
+        max_drawdown_trough: max_trough,
+        max_drawdown_end: max_end,
         best_day,
         worst_day,
     }
@@ -75,31 +97,6 @@ fn annualized_volatility(returns: &[f64], periods_per_year: u32) -> f64 {
     var.sqrt() * (periods_per_year as f64).sqrt()
 }
 
-fn max_drawdown(returns: &[f64]) -> (f64, u32) {
-    let mut equity = 1.0;
-    let mut peak = 1.0;
-    let mut max_dd = 0.0;
-    let mut max_duration = 0_u32;
-    let mut current_duration = 0_u32;
-
-    for r in returns.iter().copied().filter(|v| !v.is_nan()) {
-        equity *= 1.0 + r;
-        if equity > peak {
-            peak = equity;
-            current_duration = 0;
-        } else {
-            current_duration += 1;
-            let dd = equity / peak - 1.0;
-            if dd < max_dd {
-                max_dd = dd;
-                max_duration = current_duration;
-            }
-        }
-    }
-
-    (max_dd, max_duration)
-}
-
 fn best_and_worst(returns: &[f64]) -> (f64, f64) {
     let mut best = f64::NEG_INFINITY;
     let mut worst = f64::INFINITY;
@@ -121,5 +118,111 @@ fn best_and_worst(returns: &[f64]) -> (f64, f64) {
     }
 
     (best, worst)
+}
+
+#[derive(Clone, Debug)]
+pub struct Drawdown {
+    pub start: NaiveDate,
+    pub trough: NaiveDate,
+    pub end: NaiveDate,
+    /// Depth as a negative fraction (e.g. -0.25 for -25%)
+    pub depth: f64,
+    /// Duration in days (number of data points in the drawdown)
+    pub duration: u32,
+}
+
+/// Compute the worst drawdown segments for a return series.
+///
+/// This is a simplified implementation that scans the equity curve,
+/// identifies drawdown periods (from a new peak until recovery),
+/// and returns the `top_n` deepest ones.
+pub fn top_drawdowns(returns: &ReturnSeries, top_n: usize) -> Vec<Drawdown> {
+    let n = returns.values.len();
+    if n == 0 {
+        return Vec::new();
+    }
+
+    // Build equity curve
+    let mut equity = Vec::with_capacity(n);
+    let mut eq = 1.0_f64;
+    for r in &returns.values {
+        if r.is_nan() {
+            equity.push(eq);
+        } else {
+            eq *= 1.0 + *r;
+            equity.push(eq);
+        }
+    }
+
+    // Drawdown series relative to running peak
+    let mut peak = equity[0];
+    let mut drawdowns = Vec::with_capacity(n);
+    for &e in &equity {
+        if e > peak {
+            peak = e;
+        }
+        let dd = e / peak - 1.0;
+        drawdowns.push(dd);
+    }
+
+    // Identify drawdown segments
+    let mut segments: Vec<Drawdown> = Vec::new();
+    let mut in_dd = false;
+    let mut start_idx = 0usize;
+    let mut trough_idx = 0usize;
+    let mut min_dd = 0.0_f64;
+
+    for i in 0..n {
+        let dd = drawdowns[i];
+        if !in_dd {
+            if dd < 0.0 {
+                in_dd = true;
+                start_idx = i;
+                trough_idx = i;
+                min_dd = dd;
+            }
+        } else {
+            if dd < min_dd {
+                min_dd = dd;
+                trough_idx = i;
+            }
+
+            if dd >= 0.0 {
+                // Recovered
+                let start_date = returns.dates[start_idx];
+                let end_date = returns.dates[i];
+                let duration = (i - start_idx + 1) as u32;
+                segments.push(Drawdown {
+                    start: start_date,
+                    trough: returns.dates[trough_idx],
+                    end: end_date,
+                    depth: min_dd,
+                    duration,
+                });
+                in_dd = false;
+            }
+        }
+    }
+
+    // Handle open drawdown at the end
+    if in_dd {
+        let last = n - 1;
+        let start_date = returns.dates[start_idx];
+        let end_date = returns.dates[last];
+        let duration = (last - start_idx + 1) as u32;
+        segments.push(Drawdown {
+            start: start_date,
+            trough: returns.dates[trough_idx],
+            end: end_date,
+            depth: min_dd,
+            duration,
+        });
+    }
+
+    // Sort by depth (most negative first) and take top_n
+    segments.sort_by(|a, b| a.depth.partial_cmp(&b.depth).unwrap_or(std::cmp::Ordering::Equal));
+    segments.truncate(top_n);
+
+    segments
 }
 

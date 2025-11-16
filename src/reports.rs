@@ -1,7 +1,9 @@
 use std::path::{Path, PathBuf};
 
+use chrono::Datelike;
+
 use crate::plots;
-use crate::stats::{compute_performance_metrics, PerformanceMetrics};
+use crate::stats::{compute_performance_metrics, top_drawdowns, Drawdown, PerformanceMetrics};
 use crate::utils::{align_start_dates, DataError, ReturnSeries};
 
 const DEFAULT_TITLE: &str = "Strategy Tearsheet";
@@ -121,11 +123,10 @@ pub fn html<'a>(
         (None, _) => (returns.clone(), None),
     };
 
-    let metrics = compute_performance_metrics(
-        &prepared_returns,
-        options.rf,
-        options.periods_per_year,
-    );
+    let metrics = compute_performance_metrics(&prepared_returns, options.rf, options.periods_per_year);
+    let benchmark_metrics = prepared_benchmark
+        .as_ref()
+        .map(|b| compute_performance_metrics(b, options.rf, options.periods_per_year));
 
     let mut tpl = if let Some(path) = &options.template_path {
         std::fs::read_to_string(path)?
@@ -150,7 +151,13 @@ pub fn html<'a>(
 
     let metrics_html = build_metrics_table(
         &metrics,
+        benchmark_metrics.as_ref(),
         options.strategy_title.as_deref().unwrap_or("Strategy"),
+        options
+            .benchmark_title
+            .as_deref()
+            .unwrap_or("Benchmark"),
+        options.rf,
     );
     tpl = tpl.replace("{{metrics}}", &metrics_html);
 
@@ -198,13 +205,18 @@ pub fn html<'a>(
     let returns_dist_svg = plots::returns_distribution(&prepared_returns);
     tpl = tpl.replace("{{returns_dist}}", &returns_dist_svg);
 
-    tpl = tpl.replace("{{eoy_title}}", "<h3>End-of-Year Returns</h3>");
-    tpl = tpl.replace(
-        "{{eoy_table}}",
-        "<p>End-of-year return table not implemented in quantstats-rs yet.</p>",
-    );
+    let eoy_title = if prepared_benchmark.is_some() {
+        "<h3>EOY Returns vs Benchmark</h3>"
+    } else {
+        "<h3>EOY Returns</h3>"
+    };
+    tpl = tpl.replace("{{eoy_title}}", eoy_title);
 
-    let dd_info_html = build_drawdown_info(&metrics);
+    let eoy_table_html = build_eoy_table(&prepared_returns, prepared_benchmark.as_ref());
+    tpl = tpl.replace("{{eoy_table}}", &eoy_table_html);
+
+    let dd_segments = top_drawdowns(&prepared_returns, 10);
+    let dd_info_html = build_drawdown_info(&dd_segments);
     tpl = tpl.replace("{{dd_info}}", &dd_info_html);
 
     if let Some(path) = &options.output {
@@ -229,60 +241,238 @@ fn build_benchmark_prefix(
     }
 }
 
-fn build_metrics_table(metrics: &PerformanceMetrics, strategy_title: &str) -> String {
+fn build_metrics_table(
+    strategy: &PerformanceMetrics,
+    benchmark: Option<&PerformanceMetrics>,
+    strategy_title: &str,
+    benchmark_title: &str,
+    rf: f64,
+) -> String {
     let mut html = String::new();
-    html.push_str("<table><thead><tr><th>Metric</th><th>");
+    html.push_str("<table><thead><tr><th>Metric</th>");
+
+    if let Some(_) = benchmark {
+        html.push_str("<th>");
+        html.push_str(benchmark_title);
+        html.push_str("</th>");
+    }
+
+    html.push_str("<th>");
     html.push_str(strategy_title);
     html.push_str("</th></tr></thead><tbody>");
 
+    // Risk-free rate
     html.push_str(&format!(
-        "<tr><td>Total Return</td><td>{:.2}%</td></tr>",
-        metrics.total_return * 100.0
+        "<tr><td>Risk-Free Rate</td>{}{}</tr>",
+        benchmark
+            .as_ref()
+            .map(|_| format!("<td>{:.1}%</td>", rf * 100.0))
+            .unwrap_or_default(),
+        format!("<td>{:.1}%</td>", rf * 100.0),
     ));
+
+    // Simple separator
+    let colspan = if benchmark.is_some() { 3 } else { 2 };
     html.push_str(&format!(
-        "<tr><td>Annualized Return</td><td>{:.2}%</td></tr>",
-        metrics.annualized_return * 100.0
+        r#"<tr><td colspan="{}"><hr></td></tr>"#,
+        colspan
     ));
+
+    // Cumulative / annualized returns
+    let bench_total = benchmark.map(|b| b.total_return * 100.0);
+    html.push_str("<tr><td>Cumulative Return</td>");
+    if let Some(b) = bench_total {
+        html.push_str(&format!("<td>{:.2}%</td>", b));
+    }
     html.push_str(&format!(
-        "<tr><td>Annualized Volatility</td><td>{:.2}%</td></tr>",
-        metrics.annualized_volatility * 100.0
+        "<td>{:.2}%</td></tr>",
+        strategy.total_return * 100.0
     ));
+
+    let bench_cagr = benchmark.map(|b| b.annualized_return * 100.0);
+    html.push_str("<tr><td>CAGR﹪</td>");
+    if let Some(b) = bench_cagr {
+        html.push_str(&format!("<td>{:.2}%</td>", b));
+    }
     html.push_str(&format!(
-        "<tr><td>Sharpe Ratio</td><td>{:.2}</td></tr>",
-        metrics.sharpe_ratio
+        "<td>{:.2}%</td></tr>",
+        strategy.annualized_return * 100.0
     ));
+
     html.push_str(&format!(
-        "<tr><td>Max Drawdown</td><td>{:.2}%</td></tr>",
-        metrics.max_drawdown * 100.0
+        r#"<tr><td colspan="{}"><hr></td></tr>"#,
+        colspan
     ));
+
+    // Sharpe and volatility
+    html.push_str("<tr><td>Sharpe</td>");
+    if let Some(b) = benchmark {
+        html.push_str(&format!("<td>{:.2}</td>", b.sharpe_ratio));
+    }
+    html.push_str(&format!("<td>{:.2}</td></tr>", strategy.sharpe_ratio));
+
+    html.push_str("<tr><td>Volatility (ann.)</td>");
+    if let Some(b) = benchmark {
+        html.push_str(&format!(
+            "<td>{:.2}%</td>",
+            b.annualized_volatility * 100.0
+        ));
+    }
     html.push_str(&format!(
-        "<tr><td>Max Drawdown Duration</td><td>{}</td></tr>",
-        metrics.max_drawdown_duration
+        "<td>{:.2}%</td></tr>",
+        strategy.annualized_volatility * 100.0
     ));
+
     html.push_str(&format!(
-        "<tr><td>Best Day</td><td>{:.2}%</td></tr>",
-        metrics.best_day * 100.0
+        r#"<tr><td colspan="{}"><hr></td></tr>"#,
+        colspan
     ));
+
+    // Drawdown information
+    html.push_str("<tr><td>Max Drawdown</td>");
+    if let Some(b) = benchmark {
+        html.push_str(&format!("<td>{:.2}%</td>", b.max_drawdown * 100.0));
+    }
     html.push_str(&format!(
-        "<tr><td>Worst Day</td><td>{:.2}%</td></tr>",
-        metrics.worst_day * 100.0
+        "<td>{:.2}%</td></tr>",
+        strategy.max_drawdown * 100.0
+    ));
+
+    html.push_str("<tr><td>Longest DD Days</td>");
+    if let Some(b) = benchmark {
+        html.push_str(&format!("<td>{}</td>", b.max_drawdown_duration));
+    }
+    html.push_str(&format!(
+        "<td>{}</td></tr>",
+        strategy.max_drawdown_duration
+    ));
+
+    // Best / worst days
+    html.push_str(&format!(
+        r#"<tr><td colspan="{}"><hr></td></tr>"#,
+        colspan
+    ));
+
+    html.push_str("<tr><td>Best Day</td>");
+    if let Some(b) = benchmark {
+        html.push_str(&format!("<td>{:.2}%</td>", b.best_day * 100.0));
+    }
+    html.push_str(&format!(
+        "<td>{:.2}%</td></tr>",
+        strategy.best_day * 100.0
+    ));
+
+    html.push_str("<tr><td>Worst Day</td>");
+    if let Some(b) = benchmark {
+        html.push_str(&format!("<td>{:.2}%</td>", b.worst_day * 100.0));
+    }
+    html.push_str(&format!(
+        "<td>{:.2}%</td></tr>",
+        strategy.worst_day * 100.0
     ));
 
     html.push_str("</tbody></table>");
     html
 }
 
-fn build_drawdown_info(metrics: &PerformanceMetrics) -> String {
+fn build_drawdown_info(drawdowns: &[Drawdown]) -> String {
     let mut html = String::new();
     html.push_str("<table><thead><tr>");
-    html.push_str("<th>Max Drawdown</th>");
-    html.push_str("<th>Duration</th>");
+    html.push_str("<th>Started</th>");
+    html.push_str("<th>Recovered</th>");
+    html.push_str("<th>Drawdown</th>");
+    html.push_str("<th>Days</th>");
     html.push_str("</tr></thead><tbody>");
-    html.push_str(&format!(
-        "<tr><td>{:.2}%</td><td>{}</td></tr>",
-        metrics.max_drawdown * 100.0,
-        metrics.max_drawdown_duration
-    ));
+    for dd in drawdowns {
+        html.push_str(&format!(
+            "<tr><td>{}</td><td>{}</td><td>{:.2}</td><td>{}</td></tr>",
+            dd.start.format("%Y-%m-%d"),
+            dd.end.format("%Y-%m-%d"),
+            dd.depth * 100.0,
+            dd.duration
+        ));
+    }
     html.push_str("</tbody></table>");
+    html
+}
+
+fn build_eoy_table(
+    strategy: &ReturnSeries,
+    benchmark: Option<&ReturnSeries>,
+) -> String {
+    use std::collections::BTreeMap;
+
+    fn yearly_compounded(series: &ReturnSeries) -> BTreeMap<i32, f64> {
+        let mut grouped: BTreeMap<i32, Vec<f64>> = BTreeMap::new();
+        for (date, ret) in series.dates.iter().zip(series.values.iter()) {
+            if ret.is_nan() {
+                continue;
+            }
+            grouped.entry(date.year()).or_default().push(*ret);
+        }
+
+        let mut out = BTreeMap::new();
+        for (year, vals) in grouped {
+            if vals.is_empty() {
+                continue;
+            }
+            let total = vals
+                .iter()
+                .fold(1.0_f64, |acc, r| acc * (1.0 + *r))
+                - 1.0;
+            out.insert(year, total);
+        }
+        out
+    }
+
+    let strat_years = yearly_compounded(strategy);
+    let bench_years = benchmark.map(yearly_compounded);
+
+    if strat_years.is_empty() {
+        return "<p>No EOY data available.</p>".to_string();
+    }
+
+    let mut years: Vec<i32> = strat_years.keys().copied().collect();
+    if let Some(ref b) = bench_years {
+        for y in b.keys() {
+            if !years.contains(y) {
+                years.push(*y);
+            }
+        }
+    }
+    years.sort();
+
+    let mut html = String::new();
+    html.push_str("<table>\n<thead>\n<tr><th>Year</th>");
+    if bench_years.is_some() {
+        html.push_str("<th>Benchmark</th><th>Strategy</th><th>Multiplier</th><th>Won</th>");
+    } else {
+        html.push_str("<th>Strategy</th>");
+    }
+    html.push_str("</tr>\n</thead>\n<tbody>\n");
+
+    for year in years {
+        let strat = strat_years.get(&year).copied().unwrap_or(0.0) * 100.0;
+        if let Some(ref bench_map) = bench_years {
+            let bench = bench_map.get(&year).copied().unwrap_or(0.0) * 100.0;
+            let multiplier = if bench.abs() > f64::EPSILON {
+                strat / bench
+            } else {
+                0.0
+            };
+            let won = if strat > bench { "+" } else { "-" };
+            html.push_str(&format!(
+                "<tr><td>{}</td><td>{:.2}</td><td>{:.2}</td><td>{:.2}</td><td>{}</td></tr>\n",
+                year, bench, strat, multiplier, won
+            ));
+        } else {
+            html.push_str(&format!(
+                "<tr><td>{}</td><td>{:.2}</td></tr>\n",
+                year, strat
+            ));
+        }
+    }
+
+    html.push_str("</tbody>\n</table>");
     html
 }
