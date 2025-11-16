@@ -56,6 +56,14 @@ fn add_time_axis(
         let x = xs[idx];
         let label = dates[idx].format("%Y-%m-%d").to_string();
 
+        // Vertical grid line across the plotting area (background grid).
+        svg.push_str(&format!(
+            r##"<line x1="{x:.2}" y1="{y1:.2}" x2="{x:.2}" y2="{y2:.2}" stroke="#dddddd" stroke-width="0.5" />"##,
+            x = x,
+            y1 = PADDING,
+            y2 = height - PADDING
+        ));
+
         let tick_y1 = axis_y;
         let tick_y2 = axis_y + 4.0;
 
@@ -278,62 +286,6 @@ fn draw_equity_curve(
         y = PADDING - 10.0,
         title = title
     ));
-
-    // Y-axis label and ticks for cumulative-return style plots.
-    let is_drawdown = title.contains("Drawdown");
-    let ylabel = if is_drawdown {
-        "Drawdown"
-    } else {
-        "Cumulative Returns"
-    };
-
-    // Vertical y-axis label on the left.
-    let label_x = 12.0_f64;
-    let label_y = height / 2.0;
-    svg.push_str(&format!(
-        r#"<text x="{x:.2}" y="{y:.2}" text-anchor="middle" transform="rotate(-90 {x:.2} {y:.2})">{label}</text>"#,
-        x = label_x,
-        y = label_y,
-        label = ylabel
-    ));
-
-    // For cumulative returns plots, add simple percentage y-ticks based on
-    // equity (converted back to cumulative return).
-    if !is_drawdown {
-        let ticks = 4;
-        for i in 0..=ticks {
-            let frac = i as f64 / ticks as f64;
-            let v = min_v + frac * (max_v - min_v);
-            let y = scale_val(v);
-            let ret_pct = (v - 1.0) * 100.0;
-            let label = format!("{:.0}%", ret_pct);
-
-            // Background horizontal grid line across the plot area.
-            svg.push_str(&format!(
-                r##"<line x1="{x1:.2}" y1="{y:.2}" x2="{x2:.2}" y2="{y:.2}" stroke="#dddddd" stroke-width="0.5" />"##,
-                x1 = PADDING,
-                x2 = width - PADDING,
-                y = y
-            ));
-
-            // Tick line at the y-axis.
-            svg.push_str(&format!(
-                r##"<line x1="{x1:.2}" y1="{y:.2}" x2="{x2:.2}" y2="{y:.2}" stroke="#ccc" stroke-width="1" />"##,
-                x1 = PADDING - 3.0,
-                x2 = PADDING,
-                y = y
-            ));
-
-            // Tick label
-            svg.push_str(&format!(
-                r#"<text x="{x:.2}" y="{y:.2}" text-anchor="end">{label}</text>"#,
-                x = PADDING - 6.0,
-                // slight vertical offset so text centers on the tick
-                y = y + 3.0,
-                label = label
-            ));
-        }
-    }
 
     if let Some(eq_bench) = bench_equity {
         let xs_b = x_positions(eq_bench.len(), width);
