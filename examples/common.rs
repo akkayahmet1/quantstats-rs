@@ -1,4 +1,4 @@
-// Auto-generated from data file; do not edit by hand.
+// Auto-generated from `data` by scripts/gen_examples_common.py; do not edit by hand.
 use chrono::NaiveDate;
 use quantstats_rs::ReturnSeries;
 
