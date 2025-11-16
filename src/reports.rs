@@ -1796,7 +1796,19 @@ fn skew_kurtosis(values: &[f64]) -> (f64, f64) {
     }
     let n_f = n as f64;
     let m = mean(values);
-    let std = std_dev(values);
+    let var = {
+        let mut acc = 0.0_f64;
+        for x in values {
+            let d = *x - m;
+            acc += d * d;
+        }
+        if n_f > 1.0 {
+            acc / (n_f - 1.0)
+        } else {
+            0.0
+        }
+    };
+    let std = var.sqrt();
     if std == 0.0 {
         return (0.0, 0.0);
     }
@@ -1812,24 +1824,25 @@ fn skew_kurtosis(values: &[f64]) -> (f64, f64) {
     m3 /= n_f;
     m4 /= n_f;
 
+    // Skewness and excess kurtosis, matching pandas' behavior (normal -> 0)
     let skew = m3 / std.powi(3);
-    let kurt = m4 / std.powi(4);
+    let kurt = m4 / std.powi(4) - 3.0;
     (skew, kurt)
 }
 
 fn downside_std(values: &[f64], threshold: f64) -> f64 {
-    let negatives: Vec<f64> = values.iter().copied().filter(|v| *v < threshold).collect();
-    if negatives.is_empty() {
+    let n = values.len();
+    if n == 0 {
         return 0.0;
     }
-    let sum_sq = negatives
-        .iter()
-        .map(|v| {
-            let d = v - threshold;
-            d * d
-        })
-        .sum::<f64>();
-    (sum_sq / negatives.len() as f64).sqrt()
+    let mut sum_sq = 0.0_f64;
+    for v in values {
+        if *v < threshold {
+            let d = *v - threshold;
+            sum_sq += d * d;
+        }
+    }
+    (sum_sq / n as f64).sqrt()
 }
 
 fn time_in_market(series: &ReturnSeries) -> f64 {

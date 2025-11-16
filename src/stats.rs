@@ -30,12 +30,10 @@ pub fn compute_performance_metrics(
         0.0
     };
 
+    // Annualized volatility (used for display), but Sharpe is computed
+    // directly from per-period returns to match QuantStats' definition.
     let volatility = annualized_volatility(&returns.values, periods_per_year);
-    let sharpe_ratio = if volatility > 0.0 {
-        (annualized_return - rf) / volatility
-    } else {
-        0.0
-    };
+    let sharpe_ratio = sharpe_from_values(&returns.values, rf, periods_per_year);
 
     // Use detailed drawdown analysis for max drawdown stats
     let dd_segments = top_drawdowns(returns, 1);
@@ -78,13 +76,18 @@ fn compounded_return(returns: &[f64]) -> f64 {
 }
 
 fn annualized_volatility(returns: &[f64], periods_per_year: u32) -> f64 {
-    let clean: Vec<f64> = returns.iter().copied().filter(|v| !v.is_nan()).collect();
+    let clean: Vec<f64> = returns
+        .iter()
+        .copied()
+        .filter(|v| v.is_finite())
+        .collect();
 
     if clean.len() < 2 {
         return 0.0;
     }
 
-    let mean = clean.iter().sum::<f64>() / clean.len() as f64;
+    let n = clean.len() as f64;
+    let mean = clean.iter().sum::<f64>() / n;
     let var = clean
         .iter()
         .map(|r| {
@@ -92,7 +95,7 @@ fn annualized_volatility(returns: &[f64], periods_per_year: u32) -> f64 {
             diff * diff
         })
         .sum::<f64>()
-        / (clean.len() as f64 - 1.0);
+        / (n - 1.0);
 
     var.sqrt() * (periods_per_year as f64).sqrt()
 }
@@ -118,6 +121,46 @@ fn best_and_worst(returns: &[f64]) -> (f64, f64) {
     }
 
     (best, worst)
+}
+
+fn sharpe_from_values(returns: &[f64], rf: f64, periods_per_year: u32) -> f64 {
+    let vals: Vec<f64> = returns
+        .iter()
+        .copied()
+        .filter(|v| v.is_finite())
+        .collect();
+
+    if vals.len() < 2 {
+        return 0.0;
+    }
+
+    let n = vals.len() as f64;
+
+    // Convert annual risk-free rate to per-period
+    let rf_per_period = if rf != 0.0 {
+        (1.0 + rf).powf(1.0 / periods_per_year as f64) - 1.0
+    } else {
+        0.0
+    };
+
+    let excess: Vec<f64> = vals.into_iter().map(|r| r - rf_per_period).collect();
+
+    let mean = excess.iter().sum::<f64>() / n;
+    let var = excess
+        .iter()
+        .map(|r| {
+            let diff = *r - mean;
+            diff * diff
+        })
+        .sum::<f64>()
+        / (n - 1.0);
+    let std = var.sqrt();
+
+    if std == 0.0 {
+        0.0
+    } else {
+        mean / std * (periods_per_year as f64).sqrt()
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -236,4 +279,3 @@ fn compute_drawdown_segments(returns: &ReturnSeries) -> Vec<Drawdown> {
 
     segments
 }
-
