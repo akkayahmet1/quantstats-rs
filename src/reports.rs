@@ -9,7 +9,7 @@ use crate::utils::{align_start_dates, DataError, ReturnSeries};
 const DEFAULT_TITLE: &str = "Strategy Tearsheet";
 const DEFAULT_PERIODS_PER_YEAR: u32 = 252;
 const VERSION: &str = env!("CARGO_PKG_VERSION");
-const DEFAULT_TEMPLATE: &str = include_str!("../third_party/quantstats/quantstats/report.html");
+const DEFAULT_TEMPLATE: &str = include_str!("report_template.html");
 
 #[derive(Debug)]
 pub enum HtmlReportError {
