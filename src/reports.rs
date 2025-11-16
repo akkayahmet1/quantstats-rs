@@ -495,6 +495,54 @@ fn build_metrics_table(
         strategy.max_drawdown * 100.0
     ));
 
+    // Max DD dates: trough, start, end
+    fn fmt_date(d: Option<chrono::NaiveDate>) -> String {
+        d.map(|dt| dt.format("%Y-%m-%d").to_string())
+            .unwrap_or_else(|| "-".to_string())
+    }
+
+    html.push_str("<tr><td>Max DD Date</td>");
+    if let Some(b) = benchmark {
+        html.push_str(&format!(
+            "<td>{}</td>",
+            fmt_date(b.max_drawdown_trough)
+        ));
+    } else if benchmark.is_some() {
+        html.push_str("<td>-</td>");
+    }
+    html.push_str(&format!(
+        "<td>{}</td></tr>",
+        fmt_date(strategy.max_drawdown_trough)
+    ));
+
+    html.push_str("<tr><td>Max DD Period Start</td>");
+    if let Some(b) = benchmark {
+        html.push_str(&format!(
+            "<td>{}</td>",
+            fmt_date(b.max_drawdown_start)
+        ));
+    } else if benchmark.is_some() {
+        html.push_str("<td>-</td>");
+    }
+    html.push_str(&format!(
+        "<td>{}</td></tr>",
+        fmt_date(strategy.max_drawdown_start)
+    ));
+
+    html.push_str("<tr><td>Max DD Period End</td>");
+    if let Some(b) = benchmark {
+        html.push_str(&format!(
+            "<td>{}</td>",
+            fmt_date(b.max_drawdown_end)
+        ));
+    } else if benchmark.is_some() {
+        html.push_str("<td>-</td>");
+    }
+    html.push_str(&format!(
+        "<td>{}</td></tr>",
+        fmt_date(strategy.max_drawdown_end)
+    ));
+
     // Longest DD days from PerformanceMetrics
     html.push_str("<tr><td>Longest DD Days</td>");
     if let Some(b) = benchmark {
