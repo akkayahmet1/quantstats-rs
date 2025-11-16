@@ -47,9 +47,13 @@ def main() -> None:
 
     # Ensure all arrays have the same length by trimming to the minimum
     n = min(len(dates), len(returns_list), len(bench_list))
-    dates = dates[:n]
-    returns_list = returns_list[:n]
-    bench_list = bench_list[:n]
+    # To align with the Python QuantStats HTML (which typically drops the first
+    # price row when converting to returns), we skip the first element here so
+    # that the reported start date matches the reference tearsheet.
+    start = 1 if n > 1 else 0
+    dates = dates[start:n]
+    returns_list = returns_list[start:n]
+    bench_list = bench_list[start:n]
 
     out_lines: list[str] = []
     out_lines.append("// Auto-generated from `data` by scripts/gen_examples_common.py; do not edit by hand.")
@@ -103,4 +107,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

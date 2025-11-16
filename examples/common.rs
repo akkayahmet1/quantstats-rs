@@ -4,7 +4,6 @@ use quantstats_rs::ReturnSeries;
 
 pub fn demo_strategy() -> ReturnSeries {
     let dates = vec![
-        NaiveDate::from_ymd_opt(2025, 1, 2).unwrap(),
         NaiveDate::from_ymd_opt(2025, 1, 3).unwrap(),
         NaiveDate::from_ymd_opt(2025, 1, 4).unwrap(),
         NaiveDate::from_ymd_opt(2025, 1, 5).unwrap(),
@@ -321,7 +320,6 @@ pub fn demo_strategy() -> ReturnSeries {
     ];
 
     let returns = vec![
-        0.06547193453684952,
         0.02140591334339681,
         0.0,
         -0.01483573211955469,
@@ -642,7 +640,6 @@ pub fn demo_strategy() -> ReturnSeries {
 
 pub fn demo_benchmark() -> ReturnSeries {
     let dates = vec![
-        NaiveDate::from_ymd_opt(2025, 1, 2).unwrap(),
         NaiveDate::from_ymd_opt(2025, 1, 3).unwrap(),
         NaiveDate::from_ymd_opt(2025, 1, 4).unwrap(),
         NaiveDate::from_ymd_opt(2025, 1, 5).unwrap(),
@@ -959,7 +956,6 @@ pub fn demo_benchmark() -> ReturnSeries {
     ];
 
     let returns = vec![
-        0.07221535927527278,
         0.04646920455090964,
         -0.006055323638699095,
         -0.015045922370425013,
