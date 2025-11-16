@@ -592,7 +592,7 @@ fn build_metrics_table(
     if benchmark.is_some() {
         html.push_str(&format!("<td>{:.2}</td>", info_ratio));
     }
-    html.push_str("<td>0.00</td></tr>");
+    html.push_str(&format!("<td>{:.2}</td></tr>", info_ratio));
 
     // Calmar ratio: CAGR / |Max DD|
     let calmar_strat = if strategy.max_drawdown != 0.0 {
@@ -1235,32 +1235,68 @@ fn build_metrics_table(
         worst_year_strat * 100.0
     ));
 
-    // Drawdown-based metrics
-    let all_dd = crate::stats::all_drawdowns(strategy_returns);
-    let avg_dd = if all_dd.is_empty() {
+    // Drawdown-based metrics for strategy and benchmark
+    let all_dd_strat = crate::stats::all_drawdowns(strategy_returns);
+    let all_dd_bench = benchmark_returns.map(crate::stats::all_drawdowns);
+
+    let avg_dd = if all_dd_strat.is_empty() {
         0.0
     } else {
-        all_dd.iter().map(|d| d.depth).sum::<f64>() / all_dd.len() as f64
+        all_dd_strat
+            .iter()
+            .map(|d| d.depth)
+            .sum::<f64>()
+            / all_dd_strat.len() as f64
     };
-    let avg_dd_days = if all_dd.is_empty() {
+    let avg_dd_days = if all_dd_strat.is_empty() {
         0.0
     } else {
-        all_dd
+        all_dd_strat
             .iter()
             .map(|d| d.duration as f64)
             .sum::<f64>()
-            / all_dd.len() as f64
+            / all_dd_strat.len() as f64
     };
 
-    // Recovery factor (total returns / max drawdown)
+    let (avg_dd_bench, avg_dd_days_bench) = if let Some(ref dd_b) = all_dd_bench {
+        if dd_b.is_empty() {
+            (0.0, 0.0)
+        } else {
+            let depth = dd_b.iter().map(|d| d.depth).sum::<f64>() / dd_b.len() as f64;
+            let days = dd_b
+                .iter()
+                .map(|d| d.duration as f64)
+                .sum::<f64>()
+                / dd_b.len() as f64;
+            (depth, days)
+        }
+    } else {
+        (0.0, 0.0)
+    };
+
+    // Recovery factor matching QuantStats: abs(sum(returns) - rf) / abs(max_dd)
     let recovery_strat = if strategy.max_drawdown != 0.0 {
-        strategy.total_return.abs() / strategy.max_drawdown.abs()
+        let total = strat_vals.iter().sum::<f64>() - rf;
+        total.abs() / strategy.max_drawdown.abs()
+    } else {
+        0.0
+    };
+    let recovery_bench = if let (Some(b), Some(vals)) = (benchmark, bench_vals.as_ref())
+    {
+        if b.max_drawdown != 0.0 {
+            let total = vals.iter().sum::<f64>() - rf;
+            total.abs() / b.max_drawdown.abs()
+        } else {
+            0.0
+        }
     } else {
         0.0
     };
 
     let ulcer_strat = ulcer_index(strategy_returns);
+    let ulcer_bench = benchmark_returns.map(ulcer_index);
     let serenity_strat = serenity_index(strategy_returns, rf);
+    let serenity_bench = benchmark_returns.map(|b| serenity_index(b, rf));
 
     html.push_str(&format!(
         r#"<tr><td colspan="{}"><hr></td></tr>"#,
@@ -1269,39 +1305,39 @@ fn build_metrics_table(
 
     html.push_str("<tr><td>Avg. Drawdown</td>");
     if benchmark.is_some() {
-        html.push_str("<td>-</td>");
+        html.push_str(&format!("<td>{:.2}%</td>", avg_dd_bench * 100.0));
     }
     html.push_str(&format!("<td>{:.2}%</td></tr>", avg_dd * 100.0));
 
     html.push_str("<tr><td>Avg. Drawdown Days</td>");
     if benchmark.is_some() {
-        html.push_str("<td>-</td>");
+        html.push_str(&format!("<td>{:.0}</td>", avg_dd_days_bench));
     }
-    html.push_str(&format!(
-        "<td>{:.0}</td></tr>",
-        avg_dd_days
-    ));
+    html.push_str(&format!("<td>{:.0}</td></tr>", avg_dd_days));
 
     html.push_str("<tr><td>Recovery Factor</td>");
     if benchmark.is_some() {
-        html.push_str("<td>-</td>");
+        html.push_str(&format!("<td>{:.2}</td>", recovery_bench));
     }
     html.push_str(&format!("<td>{:.2}</td></tr>", recovery_strat));
 
     html.push_str("<tr><td>Ulcer Index</td>");
     if benchmark.is_some() {
-        html.push_str("<td>-</td>");
+        html.push_str(&format!(
+            "<td>{:.2}</td>",
+            ulcer_bench.unwrap_or(0.0)
+        ));
     }
     html.push_str(&format!("<td>{:.2}</td></tr>", ulcer_strat));
 
     html.push_str("<tr><td>Serenity Index</td>");
     if benchmark.is_some() {
-        html.push_str("<td>-</td>");
+        html.push_str(&format!(
+            "<td>{:.2}</td>",
+            serenity_bench.unwrap_or(0.0)
+        ));
     }
-    html.push_str(&format!(
-        "<td>{:.2}</td></tr>",
-        serenity_strat
-    ));
+    html.push_str(&format!("<td>{:.2}</td></tr>", serenity_strat));
 
     // Separator before average up/down month and win stats
     html.push_str(&format!(
@@ -1590,7 +1626,8 @@ fn regression_metrics(
     let alpha_daily = mean_s - beta * mean_b;
     let alpha_ann = alpha_daily * periods_per_year as f64;
 
-    // Information ratio
+    // Information ratio (no additional annualization factor, matching
+    // QuantStats' `information_ratio` implementation)
     let mut diffs = Vec::with_capacity(pairs.len());
     for (s, b) in &pairs {
         diffs.push(s - b);
@@ -1598,7 +1635,7 @@ fn regression_metrics(
     let mean_diff = mean(&diffs);
     let std_diff = std_dev(&diffs);
     let info_ratio = if std_diff > 0.0 {
-        mean_diff / std_diff * (periods_per_year as f64).sqrt()
+        mean_diff / std_diff
     } else {
         0.0
     };
@@ -2060,6 +2097,10 @@ fn ulcer_index(returns: &ReturnSeries) -> f64 {
     if dd.is_empty() {
         return 0.0;
     }
+    let n = dd.len();
+    if n < 2 {
+        return 0.0;
+    }
     let sum_sq = dd
         .iter()
         .map(|d| {
@@ -2067,7 +2108,7 @@ fn ulcer_index(returns: &ReturnSeries) -> f64 {
             x * x
         })
         .sum::<f64>();
-    (sum_sq / dd.len() as f64).sqrt()
+    (sum_sq / (n as f64 - 1.0)).sqrt()
 }
 
 fn serenity_index(returns: &ReturnSeries, rf: f64) -> f64 {
@@ -2080,7 +2121,85 @@ fn serenity_index(returns: &ReturnSeries, rf: f64) -> f64 {
     if std == 0.0 {
         return 0.0;
     }
-    let cvar_dd = empirical_cvar(&dd, 0.95);
+    // Use CVaR-style pitfall like QuantStats: normal VaR threshold and
+    // tail mean of drawdowns below that threshold.
+    let cvar_dd = {
+        let vals_dd: Vec<f64> = dd
+            .iter()
+            .copied()
+            .filter(|v| v.is_finite())
+            .collect();
+        if vals_dd.len() < 2 {
+            0.0
+        } else {
+            let n = vals_dd.len() as f64;
+            let mean = vals_dd.iter().sum::<f64>() / n;
+            let var = vals_dd
+                .iter()
+                .map(|r| {
+                    let d = *r - mean;
+                    d * d
+                })
+                .sum::<f64>()
+                / (n - 1.0);
+            let std_dd = var.sqrt();
+
+            let mut conf = 0.95_f64;
+            if conf > 1.0 {
+                conf /= 100.0;
+            }
+            // simple normal inverse CDF (same approximation as in stats.rs)
+            fn norm_cdf_local(x: f64) -> f64 {
+                0.5 * (1.0 + erf_local(x / std::f64::consts::SQRT_2))
+            }
+            fn norm_ppf_local(p: f64) -> f64 {
+                if p <= 0.0 {
+                    return f64::NEG_INFINITY;
+                }
+                if p >= 1.0 {
+                    return f64::INFINITY;
+                }
+                let mut lo = -10.0_f64;
+                let mut hi = 10.0_f64;
+                for _ in 0..80 {
+                    let mid = 0.5 * (lo + hi);
+                    let c = norm_cdf_local(mid);
+                    if c < p {
+                        lo = mid;
+                    } else {
+                        hi = mid;
+                    }
+                }
+                0.5 * (lo + hi)
+            }
+            fn erf_local(x: f64) -> f64 {
+                let sign = if x < 0.0 { -1.0 } else { 1.0 };
+                let x = x.abs();
+                let t = 1.0 / (1.0 + 0.3275911 * x);
+                let y = 1.0
+                    - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t
+                        - 0.284496736)
+                        * t
+                        + 0.254829592)
+                        * t
+                        * (-x * x).exp();
+                sign * y
+            }
+
+            let z = norm_ppf_local(1.0 - conf);
+            let var_threshold = mean + 1.0 * std_dd * z;
+
+            let tail: Vec<f64> = vals_dd
+                .into_iter()
+                .filter(|v| *v < var_threshold)
+                .collect();
+            if tail.is_empty() {
+                var_threshold
+            } else {
+                tail.iter().sum::<f64>() / tail.len() as f64
+            }
+        }
+    };
     let pitfall = -cvar_dd / std;
     let ulcer = ulcer_index(returns);
     let denom = ulcer * pitfall;
