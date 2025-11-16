@@ -1646,8 +1646,112 @@ pub fn monthly_distribution(returns: &ReturnSeries) -> String {
     if monthly.is_empty() {
         return String::new();
     }
-    let values: Vec<f64> = monthly.values().copied().collect();
-    draw_histogram(&values, 20, "Distribution of Monthly Returns")
+    let mut values: Vec<f64> = monthly
+        .values()
+        .copied()
+        .filter(|v| v.is_finite())
+        .collect();
+    if values.len() < 2 {
+        return String::new();
+    }
+    values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+    let width = WIDTH as f64;
+    let height = HEIGHT as f64;
+    let left_pad = 70.0;
+    let right_pad = 30.0;
+    let top_pad = 45.0;
+    let bottom_pad = 60.0;
+    let inner_height = height - top_pad - bottom_pad;
+
+    let min_v = *values.first().unwrap();
+    let max_v = *values.last().unwrap();
+    let span = (max_v - min_v).max(1e-6);
+    let bins = span / nice_step(span / 20.0);
+    let bins = bins.ceil().max(8.0).min(40.0) as usize;
+    let bin_width = span / bins as f64;
+    let mut counts = vec![0usize; bins];
+    for v in &values {
+        let mut idx = ((v - min_v) / bin_width).floor() as isize;
+        if idx < 0 {
+            idx = 0;
+        }
+        if idx as usize >= bins {
+            idx = bins as isize - 1;
+        }
+        counts[idx as usize] += 1;
+    }
+    let max_count = *counts.iter().max().unwrap_or(&1) as f64;
+    if max_count == 0.0 {
+        return String::new();
+    }
+
+    let bar_area = width - left_pad - right_pad;
+    let bar_width_px = bar_area / bins as f64;
+
+    let mut svg = String::new();
+    svg.push_str(&svg_header(WIDTH, HEIGHT));
+    let title = "Distribution of Monthly Returns";
+
+    // vertical grid for zero
+    if min_v <= 0.0 && max_v >= 0.0 {
+        let zero_x = left_pad + (0.0 - min_v) / span * bar_area;
+        svg.push_str(&format!(
+            r##"<line x1="{x:.2}" y1="{y1:.2}" x2="{x:.2}" y2="{y2:.2}" stroke="#bbbbbb" stroke-width="1" />"##,
+            x = zero_x,
+            y1 = top_pad,
+            y2 = height - bottom_pad
+        ));
+    }
+
+    for (idx, count) in counts.iter().enumerate() {
+        if *count == 0 {
+            continue;
+        }
+        let ratio = *count as f64 / max_count;
+        let bar_height = ratio * inner_height;
+        let x = left_pad + idx as f64 * bar_width_px;
+        let y = top_pad + (inner_height - bar_height);
+        let mid = min_v + (idx as f64 + 0.5) * bin_width;
+        let color = if mid >= 0.0 { "#4fa487" } else { "#af4b64" };
+        svg.push_str(&format!(
+            r##"<rect x="{x:.2}" y="{y:.2}" width="{w:.2}" height="{h:.2}" fill="{color}" />"##,
+            x = x,
+            y = y,
+            w = bar_width_px * 0.9,
+            h = bar_height,
+            color = color
+        ));
+    }
+
+    // X axis and ticks
+    let axis_y = height - bottom_pad;
+    svg.push_str(&format!(
+        r##"<line x1="{x1:.2}" y1="{y:.2}" x2="{x2:.2}" y2="{y:.2}" stroke="#000" stroke-width="1" />"##,
+        x1 = left_pad,
+        x2 = width - right_pad,
+        y = axis_y
+    ));
+
+    let ticks = generate_ticks(min_v, max_v);
+    for tick in ticks {
+        let x = left_pad + (tick - min_v) / span * bar_area;
+        svg.push_str(&format!(
+            r##"<line x1="{x:.2}" y1="{y1:.2}" x2="{x:.2}" y2="{y2:.2}" stroke="#ccc" stroke-width="1" />"##,
+            x = x,
+            y1 = axis_y,
+            y2 = axis_y + 6.0
+        ));
+        svg.push_str(&format!(
+            r#"<text x="{x:.2}" y="{y:.2}" text-anchor="middle" dominant-baseline="hanging">{label}</text>"#,
+            x = x,
+            y = axis_y + 10.0,
+            label = format_percentage(tick)
+        ));
+    }
+
+    svg.push_str(svg_footer());
+    wrap_plot(title, svg)
 }
 
 fn rolling_apply_indexed(
