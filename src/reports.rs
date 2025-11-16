@@ -1315,10 +1315,93 @@ fn build_metrics_table(
         serenity_strat
     ));
 
+    // Separator before average up/down month and win stats
     html.push_str(&format!(
         r#"<tr><td colspan="{}"><hr></td></tr>"#,
         colspan
     ));
+
+    // Avg. Up / Down Month (based on monthly compounded returns)
+    let avg_up_month_strat = {
+        let ups: Vec<f64> = strat_monthly
+            .iter()
+            .copied()
+            .filter(|v| *v > 0.0)
+            .collect();
+        if ups.is_empty() {
+            None
+        } else {
+            Some(mean(&ups))
+        }
+    };
+    let avg_down_month_strat = {
+        let downs: Vec<f64> = strat_monthly
+            .iter()
+            .copied()
+            .filter(|v| *v < 0.0)
+            .collect();
+        if downs.is_empty() {
+            None
+        } else {
+            Some(mean(&downs))
+        }
+    };
+
+    let (avg_up_month_bench, avg_down_month_bench) =
+        if let Some(ref months) = bench_monthly {
+            let ups: Vec<f64> = months
+                .iter()
+                .copied()
+                .filter(|v| *v > 0.0)
+                .collect();
+            let downs: Vec<f64> = months
+                .iter()
+                .copied()
+                .filter(|v| *v < 0.0)
+                .collect();
+            (
+                if ups.is_empty() {
+                    None
+                } else {
+                    Some(mean(&ups))
+                },
+                if downs.is_empty() {
+                    None
+                } else {
+                    Some(mean(&downs))
+                },
+            )
+        } else {
+            (None, None)
+        };
+
+    html.push_str("<tr><td>Avg. Up Month</td>");
+    if benchmark.is_some() {
+        if let Some(v) = avg_up_month_bench {
+            html.push_str(&format!("<td>{:.2}%</td>", v * 100.0));
+        } else {
+            html.push_str("<td>-</td>");
+        }
+    }
+    if let Some(v) = avg_up_month_strat {
+        html.push_str(&format!("<td>{:.2}%</td></tr>", v * 100.0));
+    } else {
+        html.push_str("<td>-</td></tr>");
+    }
+
+    html.push_str("<tr><td>Avg. Down Month</td>");
+    if benchmark.is_some() {
+        if let Some(v) = avg_down_month_bench {
+            html.push_str(&format!("<td>{:.2}%</td>", v * 100.0));
+        } else {
+            html.push_str("<td>-</td>");
+        }
+    }
+    if let Some(v) = avg_down_month_strat {
+        html.push_str(&format!("<td>{:.2}%</td></tr>", v * 100.0));
+    } else {
+        html.push_str("<td>-</td></tr>");
+    }
 
     // Win statistics (days)
     let non_zero_days = strat_vals.iter().filter(|v| **v != 0.0).count().max(1) as f64;
