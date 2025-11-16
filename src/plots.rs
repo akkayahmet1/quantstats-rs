@@ -1222,7 +1222,7 @@ pub fn eoy_returns(strategy: &ReturnSeries, benchmark: Option<&ReturnSeries>) ->
 
     // Legend
     let legend_y = top_pad - 24.0;
-    let legend_x = width - right_pad - 140.0;
+    let legend_x = left_pad;
     let entries = if benchmark.is_some() {
         vec![("Benchmark", BENCHMARK_COLOR), ("Strategy", STRATEGY_COLOR)]
     } else {
