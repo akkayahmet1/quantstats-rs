@@ -194,6 +194,7 @@ fn draw_equity_curve(
     benchmark: Option<&ReturnSeries>,
     title: &str,
 ) -> String {
+    // Build cumulative equity curves for strategy and optional benchmark.
     let mut equity = Vec::with_capacity(returns.values.len());
     let mut eq = 1.0;
     for r in &returns.values {
@@ -219,10 +220,52 @@ fn draw_equity_curve(
         v
     });
 
+    // Determine joint min/max to share a single y-axis scale between
+    // strategy and benchmark, similar to QuantStats' plot_timeseries.
+    let mut min_v = f64::INFINITY;
+    let mut max_v = f64::NEG_INFINITY;
+    for v in &equity {
+        if v.is_finite() {
+            if *v < min_v {
+                min_v = *v;
+            }
+            if *v > max_v {
+                max_v = *v;
+            }
+        }
+    }
+    if let Some(ref eq_b) = bench_equity {
+        for v in eq_b {
+            if v.is_finite() {
+                if *v < min_v {
+                    min_v = *v;
+                }
+                if *v > max_v {
+                    max_v = *v;
+                }
+            }
+        }
+    }
+    if !min_v.is_finite() || !max_v.is_finite() || min_v == max_v {
+        min_v = 0.0;
+        max_v = 1.0;
+    }
+
     let width = WIDTH as f64;
     let height = HEIGHT as f64;
+    let inner_height = height - 2.0 * PADDING;
+
+    let scale_val = |v: f64| {
+        if !v.is_finite() {
+            height / 2.0
+        } else {
+            let norm = (v - min_v) / (max_v - min_v);
+            PADDING + (1.0 - norm) * inner_height
+        }
+    };
+
     let xs = x_positions(equity.len(), width);
-    let ys = scale_series(&equity, height);
+    let ys: Vec<f64> = equity.iter().map(|v| scale_val(*v)).collect();
 
     let mut svg = String::new();
     svg.push_str(&svg_header(WIDTH, HEIGHT));
@@ -236,7 +279,7 @@ fn draw_equity_curve(
 
     if let Some(eq_bench) = bench_equity {
         let xs_b = x_positions(eq_bench.len(), width);
-        let ys_b = scale_series(&eq_bench, height);
+        let ys_b: Vec<f64> = eq_bench.iter().map(|v| scale_val(*v)).collect();
         let points_b: Vec<(f64, f64)> = xs_b
             .iter()
             .copied()
