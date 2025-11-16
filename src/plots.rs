@@ -1,4 +1,5 @@
 use crate::utils::ReturnSeries;
+use chrono::NaiveDate;
 
 const WIDTH: i32 = 800;
 const HEIGHT: i32 = 300;
@@ -14,6 +15,61 @@ fn svg_header(width: i32, height: i32) -> String {
 
 fn svg_footer() -> &'static str {
     "</svg>"
+}
+
+fn add_time_axis(
+    svg: &mut String,
+    dates: &[NaiveDate],
+    xs: &[f64],
+    width: f64,
+    height: f64,
+) {
+    if dates.is_empty() || xs.is_empty() {
+        return;
+    }
+
+    let axis_y = height - PADDING + 5.0;
+
+    svg.push_str(&format!(
+        r##"<line x1="{x1:.2}" y1="{y:.2}" x2="{x2:.2}" y2="{y:.2}" stroke="#ccc" stroke-width="1" />"##,
+        x1 = PADDING,
+        x2 = width - PADDING,
+        y = axis_y
+    ));
+
+    let len = dates.len();
+    let tick_count = len.min(4);
+    if tick_count == 0 {
+        return;
+    }
+
+    for i in 0..tick_count {
+        let idx = if tick_count == 1 {
+            0
+        } else {
+            (i * (len - 1)) / (tick_count - 1)
+        };
+
+        let x = xs[idx];
+        let label = dates[idx].format("%Y-%m-%d").to_string();
+
+        let tick_y1 = axis_y;
+        let tick_y2 = axis_y + 4.0;
+
+        svg.push_str(&format!(
+            r##"<line x1="{x:.2}" y1="{y1:.2}" x2="{x:.2}" y2="{y2:.2}" stroke="#ccc" stroke-width="1" />"##,
+            x = x,
+            y1 = tick_y1,
+            y2 = tick_y2
+        ));
+
+        svg.push_str(&format!(
+            r#"<text x="{x:.2}" y="{y:.2}" text-anchor="middle">{label}</text>"#,
+            x = x,
+            y = axis_y + 16.0,
+            label = label
+        ));
+    }
 }
 
 fn scale_series(values: &[f64], height: f64) -> Vec<f64> {
@@ -143,12 +199,22 @@ fn draw_equity_curve(
     if let Some(eq_bench) = bench_equity {
         let xs_b = x_positions(eq_bench.len(), width);
         let ys_b = scale_series(&eq_bench, height);
-        let points_b: Vec<(f64, f64)> = xs_b.into_iter().zip(ys_b.into_iter()).collect();
+        let points_b: Vec<(f64, f64)> = xs_b
+            .iter()
+            .copied()
+            .zip(ys_b.iter().copied())
+            .collect();
         svg.push_str(&polyline(&points_b, "#ff9933"));
     }
 
-    let points: Vec<(f64, f64)> = xs.into_iter().zip(ys.into_iter()).collect();
+    let points: Vec<(f64, f64)> = xs
+        .iter()
+        .copied()
+        .zip(ys.iter().copied())
+        .collect();
     svg.push_str(&polyline(&points, "#348dc1"));
+
+    add_time_axis(&mut svg, &returns.dates, &xs, width, height);
 
     svg.push_str(svg_footer());
     svg
@@ -197,6 +263,57 @@ fn draw_bar_chart(values: &[f64], title: &str) -> String {
             color = color
         ));
     }
+
+    svg.push_str(svg_footer());
+    svg
+}
+
+fn draw_bar_chart_with_dates(series: &ReturnSeries, title: &str) -> String {
+    let width = WIDTH as f64;
+    let height = HEIGHT as f64;
+    let xs = x_positions(series.values.len(), width);
+    let ys = scale_series(&series.values, height);
+    let zero = zero_line(height);
+
+    let mut svg = String::new();
+    svg.push_str(&svg_header(WIDTH, HEIGHT));
+
+    svg.push_str(&format!(
+        r#"<text x="{x}" y="{y}" text-anchor="middle">{title}</text>"#,
+        x = width / 2.0,
+        y = PADDING - 10.0,
+        title = title
+    ));
+
+    if xs.is_empty() {
+        svg.push_str(svg_footer());
+        return svg;
+    }
+
+    let bar_width =
+        ((width - 2.0 * PADDING) / series.values.len().max(1) as f64) * 0.7;
+
+    for (i, v) in series.values.iter().enumerate() {
+        if v.is_nan() {
+            continue;
+        }
+        let x_center = xs[i];
+        let y = ys[i];
+        let (top, bottom) = if y < zero { (y, zero) } else { (zero, y) };
+        let x = x_center - bar_width / 2.0;
+        let height = (bottom - top).abs();
+        let color = if *v >= 0.0 { "#4fa487" } else { "#af4b64" };
+        svg.push_str(&format!(
+            r#"<rect x="{x:.2}" y="{y:.2}" width="{w:.2}" height="{h:.2}" fill="{color}" />"#,
+            x = x,
+            y = top,
+            w = bar_width,
+            h = height,
+            color = color
+        ));
+    }
+
+    add_time_axis(&mut svg, &series.dates, &xs, width, height);
 
     svg.push_str(svg_footer());
     svg
@@ -311,7 +428,7 @@ pub fn histogram(returns: &ReturnSeries) -> String {
 }
 
 pub fn daily_returns(returns: &ReturnSeries) -> String {
-    draw_bar_chart(&returns.values, "Daily Returns")
+    draw_bar_chart_with_dates(returns, "Daily Returns")
 }
 
 pub fn drawdown(returns: &ReturnSeries) -> String {
@@ -324,4 +441,3 @@ pub fn drawdown(returns: &ReturnSeries) -> String {
 pub fn returns_distribution(returns: &ReturnSeries) -> String {
     draw_histogram(&returns.values, 30, "Returns Distribution")
 }
-
