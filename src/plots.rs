@@ -269,7 +269,7 @@ fn svg_footer() -> &'static str {
 
 fn wrap_plot(title: &str, svg_body: String) -> String {
     format!(
-        r#"<div class="qs-plot"><div class="qs-plot-title">{title}</div>{svg}</div>"#,
+        r#"<div class="qs-plot"><div class="qs-plot-title" style="text-align:center">{title}</div>{svg}</div>"#,
         title = title,
         svg = svg_body
     )
