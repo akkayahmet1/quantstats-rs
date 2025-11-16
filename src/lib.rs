@@ -1,0 +1,6 @@
+mod reports;
+mod stats;
+mod utils;
+
+pub use crate::reports::{html, HtmlReportError, HtmlReportOptions};
+pub use crate::stats::PerformanceMetrics;
