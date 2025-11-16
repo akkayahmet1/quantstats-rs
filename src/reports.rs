@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 
+use crate::plots;
 use crate::stats::{compute_performance_metrics, PerformanceMetrics};
 use crate::utils::{align_start_dates, DataError, ReturnSeries};
 
@@ -153,20 +154,49 @@ pub fn html<'a>(
     );
     tpl = tpl.replace("{{metrics}}", &metrics_html);
 
-    tpl = tpl.replace("{{returns}}", &placeholder_plot("returns"));
-    tpl = tpl.replace("{{log_returns}}", &placeholder_plot("log_returns"));
-    tpl = tpl.replace("{{vol_returns}}", &placeholder_plot("vol_returns"));
-    tpl = tpl.replace("{{eoy_returns}}", &placeholder_plot("eoy_returns"));
-    tpl = tpl.replace("{{monthly_dist}}", &placeholder_plot("monthly_dist"));
-    tpl = tpl.replace("{{daily_returns}}", &placeholder_plot("daily_returns"));
-    tpl = tpl.replace("{{rolling_beta}}", &placeholder_plot("rolling_beta"));
-    tpl = tpl.replace("{{rolling_vol}}", &placeholder_plot("rolling_vol"));
-    tpl = tpl.replace("{{rolling_sharpe}}", &placeholder_plot("rolling_sharpe"));
-    tpl = tpl.replace("{{rolling_sortino}}", &placeholder_plot("rolling_sortino"));
-    tpl = tpl.replace("{{dd_periods}}", &placeholder_plot("dd_periods"));
-    tpl = tpl.replace("{{dd_plot}}", &placeholder_plot("dd_plot"));
-    tpl = tpl.replace("{{monthly_heatmap}}", &placeholder_plot("monthly_heatmap"));
-    tpl = tpl.replace("{{returns_dist}}", &placeholder_plot("returns_dist"));
+    let benchmark_ref = prepared_benchmark.as_ref();
+
+    let returns_svg = plots::returns(&prepared_returns, benchmark_ref);
+    tpl = tpl.replace("{{returns}}", &returns_svg);
+
+    let log_returns_svg = plots::log_returns(&prepared_returns, benchmark_ref);
+    tpl = tpl.replace("{{log_returns}}", &log_returns_svg);
+
+    let vol_returns_svg = plots::vol_matched_returns(&prepared_returns, benchmark_ref);
+    tpl = tpl.replace("{{vol_returns}}", &vol_returns_svg);
+
+    let eoy_returns_svg = plots::returns(&prepared_returns, benchmark_ref);
+    tpl = tpl.replace("{{eoy_returns}}", &eoy_returns_svg);
+
+    let monthly_dist_svg = plots::histogram(&prepared_returns);
+    tpl = tpl.replace("{{monthly_dist}}", &monthly_dist_svg);
+
+    let daily_returns_svg = plots::daily_returns(&prepared_returns);
+    tpl = tpl.replace("{{daily_returns}}", &daily_returns_svg);
+
+    let rolling_beta_svg = plots::returns(&prepared_returns, benchmark_ref);
+    tpl = tpl.replace("{{rolling_beta}}", &rolling_beta_svg);
+
+    let rolling_vol_svg = plots::returns(&prepared_returns, benchmark_ref);
+    tpl = tpl.replace("{{rolling_vol}}", &rolling_vol_svg);
+
+    let rolling_sharpe_svg = plots::returns(&prepared_returns, benchmark_ref);
+    tpl = tpl.replace("{{rolling_sharpe}}", &rolling_sharpe_svg);
+
+    let rolling_sortino_svg = plots::returns(&prepared_returns, benchmark_ref);
+    tpl = tpl.replace("{{rolling_sortino}}", &rolling_sortino_svg);
+
+    let dd_periods_svg = plots::drawdown(&prepared_returns);
+    tpl = tpl.replace("{{dd_periods}}", &dd_periods_svg);
+
+    let dd_plot_svg = plots::drawdown(&prepared_returns);
+    tpl = tpl.replace("{{dd_plot}}", &dd_plot_svg);
+
+    let monthly_heatmap_svg = plots::histogram(&prepared_returns);
+    tpl = tpl.replace("{{monthly_heatmap}}", &monthly_heatmap_svg);
+
+    let returns_dist_svg = plots::returns_distribution(&prepared_returns);
+    tpl = tpl.replace("{{returns_dist}}", &returns_dist_svg);
 
     tpl = tpl.replace("{{eoy_title}}", "<h3>End-of-Year Returns</h3>");
     tpl = tpl.replace(
@@ -255,11 +285,4 @@ fn build_drawdown_info(metrics: &PerformanceMetrics) -> String {
     ));
     html.push_str("</tbody></table>");
     html
-}
-
-fn placeholder_plot(id: &str) -> String {
-    format!(
-        "<p>{} plot is not implemented in quantstats-rs yet.</p>",
-        id
-    )
 }
