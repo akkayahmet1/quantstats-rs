@@ -175,25 +175,32 @@ pub fn html<'a>(
     let vol_returns_svg = plots::vol_matched_returns(&prepared_returns, benchmark_ref);
     tpl = tpl.replace("{{vol_returns}}", &vol_returns_svg);
 
-    let eoy_returns_svg = plots::returns(&prepared_returns, benchmark_ref);
+    let eoy_returns_svg = plots::eoy_returns(&prepared_returns, benchmark_ref);
     tpl = tpl.replace("{{eoy_returns}}", &eoy_returns_svg);
 
-    let monthly_dist_svg = plots::histogram(&prepared_returns);
+    let monthly_dist_svg = plots::monthly_distribution(&prepared_returns);
     tpl = tpl.replace("{{monthly_dist}}", &monthly_dist_svg);
 
     let daily_returns_svg = plots::daily_returns(&prepared_returns);
     tpl = tpl.replace("{{daily_returns}}", &daily_returns_svg);
 
-    let rolling_beta_svg = plots::returns(&prepared_returns, benchmark_ref);
+    let rolling_beta_svg = if let Some(bench) = benchmark_ref {
+        plots::rolling_beta(&prepared_returns, bench, options.periods_per_year)
+    } else {
+        String::new()
+    };
     tpl = tpl.replace("{{rolling_beta}}", &rolling_beta_svg);
 
-    let rolling_vol_svg = plots::returns(&prepared_returns, benchmark_ref);
+    let rolling_vol_svg =
+        plots::rolling_volatility(&prepared_returns, options.periods_per_year);
     tpl = tpl.replace("{{rolling_vol}}", &rolling_vol_svg);
 
-    let rolling_sharpe_svg = plots::returns(&prepared_returns, benchmark_ref);
+    let rolling_sharpe_svg =
+        plots::rolling_sharpe(&prepared_returns, options.rf, options.periods_per_year);
     tpl = tpl.replace("{{rolling_sharpe}}", &rolling_sharpe_svg);
 
-    let rolling_sortino_svg = plots::returns(&prepared_returns, benchmark_ref);
+    let rolling_sortino_svg =
+        plots::rolling_sortino(&prepared_returns, options.rf, options.periods_per_year);
     tpl = tpl.replace("{{rolling_sortino}}", &rolling_sortino_svg);
 
     let dd_periods_svg = plots::drawdown(&prepared_returns);
@@ -202,7 +209,7 @@ pub fn html<'a>(
     let dd_plot_svg = plots::drawdown(&prepared_returns);
     tpl = tpl.replace("{{dd_plot}}", &dd_plot_svg);
 
-    let monthly_heatmap_svg = plots::histogram(&prepared_returns);
+    let monthly_heatmap_svg = plots::monthly_heatmap(&prepared_returns);
     tpl = tpl.replace("{{monthly_heatmap}}", &monthly_heatmap_svg);
 
     let returns_dist_svg = plots::returns_distribution(&prepared_returns);

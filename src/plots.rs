@@ -1,5 +1,6 @@
 use crate::utils::ReturnSeries;
-use chrono::NaiveDate;
+use chrono::{Datelike, NaiveDate};
+use std::collections::BTreeMap;
 
 const WIDTH: i32 = 800;
 const HEIGHT: i32 = 300;
@@ -437,7 +438,12 @@ fn compute_drawdown(returns: &ReturnSeries) -> Vec<f64> {
 }
 
 pub fn returns(returns: &ReturnSeries, benchmark: Option<&ReturnSeries>) -> String {
-    draw_equity_curve(returns, benchmark, "Cumulative Returns")
+    let title = if benchmark.is_some() {
+        "Cumulative Returns vs Benchmark"
+    } else {
+        "Cumulative Returns"
+    };
+    draw_equity_curve(returns, benchmark, title)
 }
 
 pub fn log_returns(returns: &ReturnSeries, benchmark: Option<&ReturnSeries>) -> String {
@@ -450,17 +456,27 @@ pub fn log_returns(returns: &ReturnSeries, benchmark: Option<&ReturnSeries>) -> 
         eq *= 1.0 + *v;
         *v = eq.ln();
     }
-    draw_equity_curve(&log_ret, benchmark, "Log Cumulative Returns")
+    let title = if benchmark.is_some() {
+        "Cumulative Returns vs Benchmark (Log Scaled)"
+    } else {
+        "Cumulative Returns (Log Scaled)"
+    };
+    draw_equity_curve(&log_ret, benchmark, title)
 }
 
 pub fn vol_matched_returns(
     returns: &ReturnSeries,
     benchmark: Option<&ReturnSeries>,
 ) -> String {
+    let title = if benchmark.is_some() {
+        "Cumulative Returns vs Benchmark (Volatility Matched)"
+    } else {
+        "Cumulative Returns (Volatility Matched)"
+    };
     if let Some(bm) = benchmark {
         let len = returns.values.len().min(bm.values.len());
         if len < 2 {
-            return draw_equity_curve(returns, benchmark, "Volatility Matched Returns");
+            return draw_equity_curve(returns, benchmark, title);
         }
 
         let strat_vals: Vec<f64> = returns.values[..len]
@@ -475,7 +491,7 @@ pub fn vol_matched_returns(
             .collect();
 
         if strat_vals.len() < 2 || bench_vals.len() < 2 {
-            return draw_equity_curve(returns, benchmark, "Volatility Matched Returns");
+            return draw_equity_curve(returns, benchmark, title);
         }
 
         let s_std = {
@@ -506,7 +522,7 @@ pub fn vol_matched_returns(
         };
 
         if s_std == 0.0 || b_std == 0.0 {
-            return draw_equity_curve(returns, benchmark, "Volatility Matched Returns");
+            return draw_equity_curve(returns, benchmark, title);
         }
 
         let scale = b_std / s_std;
@@ -516,19 +532,204 @@ pub fn vol_matched_returns(
             .iter()
             .map(|v| if v.is_finite() { *v * scale } else { *v })
             .collect();
-
-        draw_equity_curve(&scaled, benchmark, "Volatility Matched Returns")
+        draw_equity_curve(&scaled, benchmark, title)
     } else {
-        draw_equity_curve(returns, benchmark, "Volatility Matched Returns")
+        draw_equity_curve(returns, benchmark, title)
     }
 }
 
+fn yearly_compounded(series: &ReturnSeries) -> BTreeMap<i32, f64> {
+    let mut grouped: BTreeMap<i32, Vec<f64>> = BTreeMap::new();
+    for (date, ret) in series.dates.iter().zip(series.values.iter()) {
+        if ret.is_nan() {
+            continue;
+        }
+        grouped.entry(date.year()).or_default().push(*ret);
+    }
+
+    let mut out = BTreeMap::new();
+    for (year, vals) in grouped {
+        if vals.is_empty() {
+            continue;
+        }
+        let total = vals
+            .iter()
+            .fold(1.0_f64, |acc, r| acc * (1.0 + *r))
+            - 1.0;
+        out.insert(year, total);
+    }
+    out
+}
+
+pub fn eoy_returns(
+    strategy: &ReturnSeries,
+    benchmark: Option<&ReturnSeries>,
+) -> String {
+    let strat_years = yearly_compounded(strategy);
+    if strat_years.is_empty() {
+        return String::new();
+    }
+    let bench_years = benchmark.map(yearly_compounded);
+
+    let mut years: Vec<i32> = strat_years.keys().copied().collect();
+    if let Some(ref b) = bench_years {
+        for y in b.keys() {
+            if !years.contains(y) {
+                years.push(*y);
+            }
+        }
+    }
+    years.sort();
+    if years.is_empty() {
+        return String::new();
+    }
+
+    let width = WIDTH as f64;
+    let height = HEIGHT as f64;
+    let left_pad = 50.0;
+    let right_pad = 20.0;
+    let top_pad = 40.0;
+    let bottom_pad = 40.0;
+
+    // Collect all values to determine vertical scale.
+    let mut min_v = 0.0_f64;
+    let mut max_v = 0.0_f64;
+    for year in &years {
+        if let Some(v) = strat_years.get(year) {
+            if *v < min_v {
+                min_v = *v;
+            }
+            if *v > max_v {
+                max_v = *v;
+            }
+        }
+        if let Some(ref bmap) = bench_years {
+            if let Some(v) = bmap.get(year) {
+                if *v < min_v {
+                    min_v = *v;
+                }
+                if *v > max_v {
+                    max_v = *v;
+                }
+            }
+        }
+    }
+    if min_v > 0.0 {
+        min_v = 0.0;
+    }
+    if max_v < 0.0 {
+        max_v = 0.0;
+    }
+    let range = max_v - min_v;
+    if range == 0.0 {
+        return String::new();
+    }
+
+    let inner_height = height - top_pad - bottom_pad;
+    let value_to_y = |v: f64| {
+        let norm = (v - min_v) / range;
+        top_pad + (1.0 - norm) * inner_height
+    };
+    let zero_y = value_to_y(0.0);
+
+    let groups = years.len();
+    let group_width =
+        (width - left_pad - right_pad) / (groups as f64).max(1.0);
+    let bar_width = group_width * 0.35;
+
+    let mut svg = String::new();
+    svg.push_str(&svg_header(WIDTH, HEIGHT));
+    let title = if benchmark.is_some() {
+        "EOY Returns vs Benchmark"
+    } else {
+        "EOY Returns"
+    };
+    svg.push_str(&format!(
+        r#"<text x="{x}" y="{y}" text-anchor="middle">{title}</text>"#,
+        x = width / 2.0,
+        y = PADDING - 10.0,
+        title = title
+    ));
+
+    // Zero line
+    svg.push_str(&format!(
+        r##"<line x1="{x1:.2}" y1="{y:.2}" x2="{x2:.2}" y2="{y:.2}" stroke="#ccc" stroke-width="1" />"##,
+        x1 = left_pad,
+        x2 = width - right_pad,
+        y = zero_y
+    ));
+
+    for (idx, year) in years.iter().enumerate() {
+        let group_left = left_pad + idx as f64 * group_width;
+        let cx = group_left + group_width / 2.0;
+
+        // Year label
+        svg.push_str(&format!(
+            r##"<text x="{x:.2}" y="{y:.2}" text-anchor="middle" fill="#808080">{year}</text>"##,
+            x = cx,
+            y = height - bottom_pad + 14.0,
+            year = year
+        ));
+
+        if let Some(ref bmap) = bench_years {
+            if let Some(v) = bmap.get(year) {
+                let y_val = value_to_y(*v);
+                let (top, bottom) = if *v >= 0.0 {
+                    (y_val, zero_y)
+                } else {
+                    (zero_y, y_val)
+                };
+                let x = cx - bar_width * 0.6;
+                let h = (bottom - top).abs();
+                svg.push_str(&format!(
+                    r##"<rect x="{x:.2}" y="{y:.2}" width="{w:.2}" height="{h:.2}" fill="#ff9933" />"##,
+                    x = x,
+                    y = top,
+                    w = bar_width,
+                    h = h
+                ));
+            }
+        }
+
+        if let Some(v) = strat_years.get(year) {
+            let y_val = value_to_y(*v);
+            let (top, bottom) = if *v >= 0.0 {
+                (y_val, zero_y)
+            } else {
+                (zero_y, y_val)
+            };
+            let x = cx + bar_width * 0.6 - bar_width;
+            let h = (bottom - top).abs();
+            svg.push_str(&format!(
+                r##"<rect x="{x:.2}" y="{y:.2}" width="{w:.2}" height="{h:.2}" fill="#348dc1" />"##,
+                x = x,
+                y = top,
+                w = bar_width,
+                h = h
+            ));
+        }
+    }
+
+    svg.push_str(svg_footer());
+    svg
+}
+
 pub fn histogram(returns: &ReturnSeries) -> String {
-    draw_histogram(&returns.values, 20, "Returns Distribution")
+    draw_histogram(&returns.values, 20, "Distribution of Daily Returns")
 }
 
 pub fn daily_returns(returns: &ReturnSeries) -> String {
-    draw_bar_chart_with_dates(returns, "Daily Returns")
+    let mut cum = Vec::with_capacity(returns.values.len());
+    let mut acc = 0.0_f64;
+    for r in &returns.values {
+        if r.is_nan() {
+            cum.push(acc);
+        } else {
+            acc += *r;
+            cum.push(acc);
+        }
+    }
+    draw_line_chart(&returns.dates, &cum, "Daily Returns (Cumulative Sum)")
 }
 
 pub fn drawdown(returns: &ReturnSeries) -> String {
@@ -539,7 +740,42 @@ pub fn drawdown(returns: &ReturnSeries) -> String {
 }
 
 pub fn returns_distribution(returns: &ReturnSeries) -> String {
-    draw_histogram(&returns.values, 30, "Returns Distribution")
+    draw_histogram(&returns.values, 30, "Return Quantiles")
+}
+
+fn monthly_compounded(series: &ReturnSeries) -> BTreeMap<(i32, u32), f64> {
+    let mut grouped: BTreeMap<(i32, u32), Vec<f64>> = BTreeMap::new();
+    for (date, ret) in series.dates.iter().zip(series.values.iter()) {
+        if ret.is_nan() {
+            continue;
+        }
+        grouped
+            .entry((date.year(), date.month()))
+            .or_default()
+            .push(*ret);
+    }
+
+    let mut out = BTreeMap::new();
+    for (key, vals) in grouped {
+        if vals.is_empty() {
+            continue;
+        }
+        let total = vals
+            .iter()
+            .fold(1.0_f64, |acc, r| acc * (1.0 + *r))
+            - 1.0;
+        out.insert(key, total);
+    }
+    out
+}
+
+pub fn monthly_distribution(returns: &ReturnSeries) -> String {
+    let monthly = monthly_compounded(returns);
+    if monthly.is_empty() {
+        return String::new();
+    }
+    let values: Vec<f64> = monthly.values().copied().collect();
+    draw_histogram(&values, 20, "Distribution of Monthly Returns")
 }
 
 fn rolling_apply(values: &[f64], window: usize, f: impl Fn(&[f64]) -> f64) -> Vec<f64> {
@@ -674,20 +910,24 @@ pub fn rolling_beta(
 
     let strat = &returns.values[..len];
     let bench = &benchmark.values[..len];
-    let betas = rolling_apply(strat, window, |win_s| {
-        let idx_start = 0; // placeholder, see below
-        let start = idx_start;
-        let end = idx_start + window;
+
+    // Slide a window over the aligned strategy/benchmark returns and
+    // compute beta in each window using the same covariance / variance
+    // logic as the regression_metrics helper.
+    let mut betas = Vec::with_capacity(len - window + 1);
+    for start in 0..=len - window {
+        let end = start + window;
         let mut pairs: Vec<(f64, f64)> = Vec::with_capacity(window);
         for i in start..end {
-            let s = win_s[i - start];
+            let s = strat[i];
             let b = bench[i];
             if s.is_finite() && b.is_finite() {
                 pairs.push((s, b));
             }
         }
         if pairs.len() < 2 {
-            return 0.0;
+            betas.push(0.0);
+            continue;
         }
         let n = pairs.len() as f64;
         let mean_s = pairs.iter().map(|(s, _)| s).sum::<f64>() / n;
@@ -702,16 +942,146 @@ pub fn rolling_beta(
         }
         cov /= n - 1.0;
         var_b /= n - 1.0;
-        if var_b == 0.0 {
-            0.0
-        } else {
-            cov / var_b
-        }
-    });
+        let beta = if var_b == 0.0 { 0.0 } else { cov / var_b };
+        betas.push(beta);
+    }
 
     if betas.is_empty() {
         return String::new();
     }
     let dates = &returns.dates[window - 1..window - 1 + betas.len()];
     draw_line_chart(dates, &betas, "Rolling Beta (6-Months)")
+}
+
+pub fn monthly_heatmap(returns: &ReturnSeries) -> String {
+    let monthly = monthly_compounded(returns);
+    if monthly.is_empty() {
+        return String::new();
+    }
+
+    let mut years: Vec<i32> = monthly.keys().map(|(y, _)| *y).collect();
+    years.sort();
+    years.dedup();
+    if years.is_empty() {
+        return String::new();
+    }
+
+    let month_labels = [
+        "JAN", "FEB", "MAR", "APR", "MAY", "JUN",
+        "JUL", "AUG", "SEP", "OCT", "NOV", "DEC",
+    ];
+
+    let width = WIDTH as f64;
+    let height = HEIGHT as f64;
+    let left_pad = 55.0;
+    let right_pad = 20.0;
+    let top_pad = 40.0;
+    let bottom_pad = 30.0;
+    let cols = 12usize;
+    let rows = years.len();
+
+    let cell_w = (width - left_pad - right_pad) / cols as f64;
+    let cell_h = (height - top_pad - bottom_pad) / rows as f64;
+
+    // Find max abs monthly return to scale colors.
+    let mut max_abs = 0.0_f64;
+    for v in monthly.values() {
+        let a = v.abs();
+        if a > max_abs {
+            max_abs = a;
+        }
+    }
+    if max_abs == 0.0 {
+        max_abs = 1.0;
+    }
+
+    let mut svg = String::new();
+    svg.push_str(&svg_header(WIDTH, HEIGHT));
+
+    svg.push_str(&format!(
+        r#"<text x="{x}" y="{y}" text-anchor="middle">Strategy - Monthly Returns (%)</text>"#,
+        x = width / 2.0,
+        y = PADDING - 10.0,
+    ));
+
+    // Month labels along x-axis.
+    for (i, label) in month_labels.iter().enumerate() {
+        let x = left_pad + (i as f64 + 0.5) * cell_w;
+        let y = height - bottom_pad + 12.0;
+        svg.push_str(&format!(
+            r##"<text x="{x:.2}" y="{y:.2}" text-anchor="middle" fill="#808080">{label}</text>"##,
+            x = x,
+            y = y,
+            label = label
+        ));
+    }
+
+    // Year labels and cells.
+    for (row, year) in years.iter().enumerate() {
+        let y_center = top_pad + (row as f64 + 0.5) * cell_h;
+        let y_top = y_center - cell_h / 2.0;
+
+        // Year label on the left.
+        svg.push_str(&format!(
+            r##"<text x="{x:.2}" y="{y:.2}" text-anchor="end" fill="#808080">{year}</text>"##,
+            x = left_pad - 5.0,
+            y = y_center + 3.0,
+            year = year
+        ));
+
+        for month_idx in 0..cols {
+            let month = (month_idx + 1) as u32;
+            let key = (*year, month);
+            let x_left = left_pad + month_idx as f64 * cell_w;
+
+            if let Some(v) = monthly.get(&key) {
+                let t_raw = (v.abs() / max_abs).min(1.0);
+                let t = 0.2 + 0.8 * t_raw; // keep a minimum intensity
+                let (br, bg, bb) = if *v >= 0.0 {
+                    (79.0, 164.0, 135.0) // greenish
+                } else {
+                    (175.0, 75.0, 100.0) // reddish
+                };
+                let r = 255.0 * (1.0 - t) + br * t;
+                let g = 255.0 * (1.0 - t) + bg * t;
+                let b = 255.0 * (1.0 - t) + bb * t;
+
+                svg.push_str(&format!(
+                    r##"<rect x="{x:.2}" y="{y:.2}" width="{w:.2}" height="{h:.2}" fill="rgb({r:.0},{g:.0},{b:.0})" />"##,
+                    x = x_left,
+                    y = y_top,
+                    w = cell_w,
+                    h = cell_h,
+                    r = r,
+                    g = g,
+                    b = b
+                ));
+
+                // Percentage text inside the cell.
+                let val = *v * 100.0;
+                let text_color = if t > 0.6 { "#ffffff" } else { "#262626" };
+                let tx = x_left + cell_w / 2.0;
+                let ty = y_center + 4.0;
+                svg.push_str(&format!(
+                    r##"<text x="{x:.2}" y="{y:.2}" text-anchor="middle" font-size="9" fill="{color}">{val:.1}</text>"##,
+                    x = tx,
+                    y = ty,
+                    color = text_color,
+                    val = val
+                ));
+            } else {
+                // Empty month cell.
+                svg.push_str(&format!(
+                    r##"<rect x="{x:.2}" y="{y:.2}" width="{w:.2}" height="{h:.2}" fill="#f5f5f5" />"##,
+                    x = x_left,
+                    y = y_top,
+                    w = cell_w,
+                    h = cell_h
+                ));
+            }
+        }
+    }
+
+    svg.push_str(svg_footer());
+    svg
 }
