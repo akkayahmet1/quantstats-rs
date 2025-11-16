@@ -192,7 +192,7 @@ pub fn html<'a>(
     tpl = tpl.replace("{{rolling_beta}}", &rolling_beta_svg);
 
     let rolling_vol_svg =
-        plots::rolling_volatility(&prepared_returns, options.periods_per_year);
+        plots::rolling_volatility(&prepared_returns, benchmark_ref, options.periods_per_year);
     tpl = tpl.replace("{{rolling_vol}}", &rolling_vol_svg);
 
     let rolling_sharpe_svg =
