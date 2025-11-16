@@ -36,19 +36,21 @@ pub fn compute_performance_metrics(
     let sharpe_ratio = sharpe_from_values(&returns.values, rf, periods_per_year);
 
     // Use detailed drawdown analysis for max drawdown stats
+    // and longest drawdown duration (may be a different period).
     let dd_segments = top_drawdowns(returns, 1);
-    let (max_drawdown, max_duration, max_start, max_trough, max_end) =
+    let (max_drawdown, max_start, max_trough, max_end) =
         if let Some(dd) = dd_segments.first() {
-            (
-                dd.depth,
-                dd.duration,
-                Some(dd.start),
-                Some(dd.trough),
-                Some(dd.end),
-            )
+            (dd.depth, Some(dd.start), Some(dd.trough), Some(dd.end))
         } else {
-            (0.0, 0, None, None, None)
+            (0.0, None, None, None)
         };
+
+    let all_dd_segments = all_drawdowns(returns);
+    let max_duration = all_dd_segments
+        .iter()
+        .map(|d| d.duration)
+        .max()
+        .unwrap_or(0);
 
     let (best_day, worst_day) = best_and_worst(&returns.values);
 
