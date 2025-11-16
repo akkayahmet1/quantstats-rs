@@ -1,3 +1,7 @@
 /target
 /third_party
 /*.html
+/data
+/.vs_
+/.qs-venv
+

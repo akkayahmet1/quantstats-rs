@@ -1388,58 +1388,83 @@ fn build_metrics_table(
         colspan
     ));
 
-    // Avg. Up / Down Month (based on monthly compounded returns)
-    let avg_up_month_strat = {
-        let ups: Vec<f64> = strat_monthly
-            .iter()
-            .copied()
-            .filter(|v| *v > 0.0)
-            .collect();
-        if ups.is_empty() {
-            None
-        } else {
-            Some(mean(&ups))
-        }
-    };
-    let avg_down_month_strat = {
-        let downs: Vec<f64> = strat_monthly
-            .iter()
-            .copied()
-            .filter(|v| *v < 0.0)
-            .collect();
-        if downs.is_empty() {
-            None
-        } else {
-            Some(mean(&downs))
-        }
-    };
+    // Avg. Up / Down Month (based on monthly compounded returns).
+    // When a benchmark is present, we follow QuantStats' DataFrame
+    // semantics: only months where both strategy and benchmark are
+    // positive/negative are used (intersection across columns),
+    // mirroring avg_win/avg_loss on a multi-column DataFrame.
+    let (avg_up_month_strat, avg_up_month_bench, avg_down_month_strat, avg_down_month_bench) =
+        if let Some(ref months_bench) = bench_monthly {
+            let len = strat_monthly.len().min(months_bench.len());
+            let mut up_s = Vec::new();
+            let mut up_b = Vec::new();
+            let mut down_s = Vec::new();
+            let mut down_b = Vec::new();
 
-    let (avg_up_month_bench, avg_down_month_bench) =
-        if let Some(ref months) = bench_monthly {
-            let ups: Vec<f64> = months
-                .iter()
-                .copied()
-                .filter(|v| *v > 0.0)
-                .collect();
-            let downs: Vec<f64> = months
-                .iter()
-                .copied()
-                .filter(|v| *v < 0.0)
-                .collect();
-            (
+            for i in 0..len {
+                let s = strat_monthly[i];
+                let b = months_bench[i];
+                if !s.is_finite() || !b.is_finite() {
+                    continue;
+                }
+                if s > 0.0 && b > 0.0 {
+                    up_s.push(s);
+                    up_b.push(b);
+                }
+                if s < 0.0 && b < 0.0 {
+                    down_s.push(s);
+                    down_b.push(b);
+                }
+            }
+
+            let up_s_avg = if up_s.is_empty() {
+                None
+            } else {
+                Some(mean(&up_s))
+            };
+            let up_b_avg = if up_b.is_empty() {
+                None
+            } else {
+                Some(mean(&up_b))
+            };
+            let down_s_avg = if down_s.is_empty() {
+                None
+            } else {
+                Some(mean(&down_s))
+            };
+            let down_b_avg = if down_b.is_empty() {
+                None
+            } else {
+                Some(mean(&down_b))
+            };
+
+            (up_s_avg, up_b_avg, down_s_avg, down_b_avg)
+        } else {
+            let avg_up_month_strat = {
+                let ups: Vec<f64> = strat_monthly
+                    .iter()
+                    .copied()
+                    .filter(|v| *v > 0.0)
+                    .collect();
                 if ups.is_empty() {
                     None
                 } else {
                     Some(mean(&ups))
-                },
+                }
+            };
+            let avg_down_month_strat = {
+                let downs: Vec<f64> = strat_monthly
+                    .iter()
+                    .copied()
+                    .filter(|v| *v < 0.0)
+                    .collect();
                 if downs.is_empty() {
                     None
                 } else {
                     Some(mean(&downs))
-                },
-            )
-        } else {
-            (None, None)
+                }
+            };
+            (avg_up_month_strat, None, avg_down_month_strat, None)
         };
 
     html.push_str("<tr><td>Avg. Up Month</td>");
