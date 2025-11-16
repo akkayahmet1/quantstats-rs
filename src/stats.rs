@@ -189,6 +189,181 @@ pub fn top_drawdowns(returns: &ReturnSeries, top_n: usize) -> Vec<Drawdown> {
     segments
 }
 
+/// Compute daily Value-at-Risk (normal approximation) at given confidence.
+///
+/// Matches QuantStats' `value_at_risk` when called with rf=0,
+/// `sigma` multiplier = 1 and `confidence = 0.95`.
+pub fn var_normal(returns: &ReturnSeries, sigma: f64, confidence: f64) -> f64 {
+    let vals: Vec<f64> = returns
+        .values
+        .iter()
+        .copied()
+        .filter(|v| v.is_finite())
+        .collect();
+    if vals.len() < 2 {
+        return 0.0;
+    }
+
+    let n = vals.len() as f64;
+    let mean = vals.iter().sum::<f64>() / n;
+    let var = vals
+        .iter()
+        .map(|r| {
+            let d = *r - mean;
+            d * d
+        })
+        .sum::<f64>()
+        / (n - 1.0);
+    let std = var.sqrt();
+
+    let mut conf = confidence;
+    if conf > 1.0 {
+        conf /= 100.0;
+    }
+    let z = normal_ppf(1.0 - conf);
+    mean + sigma * std * z
+}
+
+/// Conditional Value-at-Risk (Expected Shortfall) using the same logic as
+/// QuantStats' `conditional_value_at_risk`.
+pub fn cvar(returns: &ReturnSeries, sigma: f64, confidence: f64) -> f64 {
+    let vals: Vec<f64> = returns
+        .values
+        .iter()
+        .copied()
+        .filter(|v| v.is_finite())
+        .collect();
+    if vals.len() < 2 {
+        return 0.0;
+    }
+
+    let var_threshold = var_normal(returns, sigma, confidence);
+    let tail: Vec<f64> = vals
+        .into_iter()
+        .filter(|v| *v < var_threshold)
+        .collect();
+
+    if tail.is_empty() {
+        var_threshold
+    } else {
+        tail.iter().sum::<f64>() / tail.len() as f64
+    }
+}
+
+/// Kelly criterion based on average win/loss and win rate, matching
+/// QuantStats' `kelly_criterion` behavior for a single return series.
+pub fn kelly(returns: &ReturnSeries) -> f64 {
+    let vals: Vec<f64> = returns
+        .values
+        .iter()
+        .copied()
+        .filter(|v| v.is_finite())
+        .collect();
+    if vals.is_empty() {
+        return 0.0;
+    }
+
+    let wins: Vec<f64> = vals.iter().copied().filter(|v| *v > 0.0).collect();
+    let losses: Vec<f64> = vals.iter().copied().filter(|v| *v < 0.0).collect();
+
+    if wins.is_empty() || losses.is_empty() {
+        return 0.0;
+    }
+
+    let avg_win = wins.iter().sum::<f64>() / wins.len() as f64;
+    let avg_loss = losses.iter().sum::<f64>() / losses.len() as f64;
+    if avg_loss == 0.0 {
+        return 0.0;
+    }
+    let win_loss_ratio = avg_win / -avg_loss;
+
+    // win rate uses only non-zero returns in the denominator
+    let non_zero: Vec<f64> = vals.iter().copied().filter(|v| *v != 0.0).collect();
+    if non_zero.is_empty() {
+        return 0.0;
+    }
+    let win_prob =
+        non_zero.iter().filter(|v| **v > 0.0).count() as f64 / non_zero.len() as f64;
+    let lose_prob = 1.0 - win_prob;
+
+    if win_loss_ratio == 0.0 {
+        0.0
+    } else {
+        ((win_loss_ratio * win_prob) - lose_prob) / win_loss_ratio
+    }
+}
+
+/// Risk of Ruin using the gambler's ruin formula as in QuantStats'
+/// `risk_of_ruin`.
+pub fn risk_of_ruin(returns: &ReturnSeries) -> f64 {
+    let vals: Vec<f64> = returns
+        .values
+        .iter()
+        .copied()
+        .filter(|v| v.is_finite())
+        .collect();
+    if vals.is_empty() {
+        return 0.0;
+    }
+
+    // win rate over non-zero returns
+    let non_zero: Vec<f64> = vals.iter().copied().filter(|v| *v != 0.0).collect();
+    if non_zero.is_empty() {
+        return 0.0;
+    }
+    let win_prob =
+        non_zero.iter().filter(|v| **v > 0.0).count() as f64 / non_zero.len() as f64;
+
+    if win_prob <= 0.0 {
+        return 1.0;
+    }
+
+    let ratio = (1.0 - win_prob) / (1.0 + win_prob);
+    ratio.powf(vals.len() as f64)
+}
+
+fn normal_cdf(x: f64) -> f64 {
+    0.5 * (1.0 + erf(x / std::f64::consts::SQRT_2))
+}
+
+fn normal_ppf(p: f64) -> f64 {
+    // Simple binary search inversion of the CDF on a bounded interval.
+    if p <= 0.0 {
+        return f64::NEG_INFINITY;
+    }
+    if p >= 1.0 {
+        return f64::INFINITY;
+    }
+
+    let mut lo = -10.0_f64;
+    let mut hi = 10.0_f64;
+    for _ in 0..80 {
+        let mid = 0.5 * (lo + hi);
+        let c = normal_cdf(mid);
+        if c < p {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    0.5 * (lo + hi)
+}
+
+fn erf(x: f64) -> f64 {
+    // Abramowitz & Stegun approximation.
+    let sign = if x < 0.0 { -1.0 } else { 1.0 };
+    let x = x.abs();
+    let t = 1.0 / (1.0 + 0.3275911 * x);
+    let y = 1.0
+        - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t
+            - 0.284496736)
+            * t
+            + 0.254829592)
+            * t
+            * (-x * x).exp();
+    sign * y
+}
+
 /// Compute all drawdown segments (from each peak to full recovery or series end).
 pub fn all_drawdowns(returns: &ReturnSeries) -> Vec<Drawdown> {
     compute_drawdown_segments(returns)

@@ -697,34 +697,8 @@ fn build_metrics_table(
     ));
 
     // Kelly criterion
-    fn kelly(values: &[f64]) -> f64 {
-        let wins: Vec<f64> = values.iter().copied().filter(|v| *v > 0.0).collect();
-        let losses: Vec<f64> = values.iter().copied().filter(|v| *v < 0.0).collect();
-        if wins.is_empty() || losses.is_empty() {
-            return 0.0;
-        }
-        let avg_win = mean(&wins);
-        let avg_loss = mean(&losses);
-        if avg_loss == 0.0 {
-            return 0.0;
-        }
-        let win_loss_ratio = avg_win / -avg_loss;
-        let non_zero = values
-            .iter()
-            .filter(|v| **v != 0.0)
-            .count()
-            .max(1) as f64;
-        let win_prob = wins.len() as f64 / non_zero;
-        let lose_prob = 1.0 - win_prob;
-        if win_loss_ratio == 0.0 {
-            0.0
-        } else {
-            ((win_loss_ratio * win_prob) - lose_prob) / win_loss_ratio
-        }
-    }
-
-    let kelly_strat = kelly(&strat_vals);
-    let kelly_bench = bench_vals.as_ref().map(|v| kelly(v));
+    let kelly_strat = crate::stats::kelly(strategy_returns);
+    let kelly_bench = benchmark_returns.map(crate::stats::kelly);
 
     html.push_str("<tr><td>Kelly Criterion</td>");
     if let Some(v) = kelly_bench {
@@ -738,24 +712,8 @@ fn build_metrics_table(
     ));
 
     // Risk of Ruin
-    fn risk_of_ruin(values: &[f64]) -> f64 {
-        let non_zero: Vec<f64> =
-            values.iter().copied().filter(|v| *v != 0.0).collect();
-        if non_zero.is_empty() {
-            return 0.0;
-        }
-        let wins = non_zero.iter().filter(|v| **v > 0.0).count() as f64;
-        let win_rate = wins / non_zero.len() as f64;
-        if win_rate == 0.0 {
-            1.0
-        } else {
-            let ratio = (1.0 - win_rate) / (1.0 + win_rate);
-            ratio.powf(non_zero.len() as f64)
-        }
-    }
-
-    let ror_strat = risk_of_ruin(&strat_vals);
-    let ror_bench = bench_vals.as_ref().map(|v| risk_of_ruin(v));
+    let ror_strat = crate::stats::risk_of_ruin(strategy_returns);
+    let ror_bench = benchmark_returns.map(crate::stats::risk_of_ruin);
 
     html.push_str("<tr><td>Risk of Ruin</td>");
     if let Some(v) = ror_bench {
@@ -768,11 +726,11 @@ fn build_metrics_table(
         ror_strat * 100.0
     ));
 
-    // VaR and cVaR (ES)
-    let var_strat = empirical_var(&strat_vals, 0.95);
-    let cvar_strat = empirical_cvar(&strat_vals, 0.95);
-    let var_bench = bench_vals.as_ref().map(|v| empirical_var(v, 0.95));
-    let cvar_bench = bench_vals.as_ref().map(|v| empirical_cvar(v, 0.95));
+    // VaR and cVaR (ES) using QuantStats-style normal VaR + tail mean
+    let var_strat = crate::stats::var_normal(strategy_returns, 1.0, 0.95);
+    let cvar_strat = crate::stats::cvar(strategy_returns, 1.0, 0.95);
+    let var_bench = benchmark_returns.map(|b| crate::stats::var_normal(b, 1.0, 0.95));
+    let cvar_bench = benchmark_returns.map(|b| crate::stats::cvar(b, 1.0, 0.95));
 
     html.push_str("<tr><td>Daily Value-at-Risk</td>");
     if let Some(v) = var_bench {
