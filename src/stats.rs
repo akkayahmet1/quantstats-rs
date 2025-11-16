@@ -67,6 +67,30 @@ pub fn compute_performance_metrics(
     }
 }
 
+/// Compound annual growth rate (CAGR) from a slice of return values,
+/// matching QuantStats' `cagr` implementation for rf = 0 and
+/// compounded returns.
+///
+/// This is used for multi-year annualized metrics (3Y/5Y/10Y/All-time)
+/// in the HTML report.
+pub fn cagr_from_values(returns: &[f64], periods_per_year: u32) -> f64 {
+    if returns.is_empty() {
+        return 0.0;
+    }
+
+    // Total compounded return over the slice
+    let total = compounded_return(returns);
+
+    // Time in years expressed in trading periods
+    let n = returns.len() as f64;
+    let years = n / periods_per_year as f64;
+    if years <= 0.0 {
+        return 0.0;
+    }
+
+    (1.0 + total).abs().powf(1.0 / years) - 1.0
+}
+
 fn compounded_return(returns: &[f64]) -> f64 {
     returns
         .iter()
@@ -226,6 +250,11 @@ pub fn var_normal(returns: &ReturnSeries, sigma: f64, confidence: f64) -> f64 {
 
 /// Conditional Value-at-Risk (Expected Shortfall) using the same logic as
 /// QuantStats' `conditional_value_at_risk`.
+///
+/// This is currently not used directly in the HTML report (which mirrors
+/// the reference QuantStats HTML where CVaR equals VaR), but is kept
+/// available for library consumers.
+#[allow(dead_code)]
 pub fn cvar(returns: &ReturnSeries, sigma: f64, confidence: f64) -> f64 {
     let vals: Vec<f64> = returns
         .values
@@ -367,6 +396,30 @@ fn erf(x: f64) -> f64 {
 /// Compute all drawdown segments (from each peak to full recovery or series end).
 pub fn all_drawdowns(returns: &ReturnSeries) -> Vec<Drawdown> {
     compute_drawdown_segments(returns)
+}
+
+/// Market exposure / time in market, matching QuantStats' `exposure`
+/// (with prepare_returns = false).
+///
+/// Counts non-NaN, non-zero returns and divides by total periods,
+/// then rounds up to nearest percent: ceil(ex * 100) / 100.
+pub fn exposure(series: &ReturnSeries) -> f64 {
+    if series.values.is_empty() {
+        return 0.0;
+    }
+
+    let active = series
+        .values
+        .iter()
+        .filter(|v| v.is_finite() && **v != 0.0)
+        .count() as f64;
+    let total = series.values.len() as f64;
+    if total == 0.0 {
+        return 0.0;
+    }
+
+    let ex = active / total;
+    (ex * 100.0).ceil() / 100.0
 }
 
 fn compute_drawdown_segments(returns: &ReturnSeries) -> Vec<Drawdown> {

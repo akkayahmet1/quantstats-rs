@@ -299,18 +299,14 @@ fn build_metrics_table(
         format!("<td>{:.1}%</td>", rf * 100.0),
     ));
 
-    // Time in market
+    // Time in market (exposure)
     html.push_str("<tr><td>Time in Market</td>");
     if let Some(b_ret) = benchmark_returns {
-        html.push_str(&format!(
-            "<td>{:.1}%</td>",
-            time_in_market(b_ret) * 100.0
-        ));
+        let exp_b = crate::stats::exposure(b_ret);
+        html.push_str(&format!("<td>{:.1}%</td>", exp_b * 100.0));
     }
-    html.push_str(&format!(
-        "<td>{:.1}%</td></tr>",
-        time_in_market(strategy_returns) * 100.0
-    ));
+    let exp_s = crate::stats::exposure(strategy_returns);
+    html.push_str(&format!("<td>{:.1}%</td></tr>", exp_s * 100.0));
 
     html.push_str(&format!(
         r#"<tr><td colspan="{}"><hr></td></tr>"#,
@@ -642,6 +638,8 @@ fn build_metrics_table(
     ));
 
     // Expected returns
+    // Expected daily/monthly/yearly use geometric mean of aggregated
+    // returns, mirroring QuantStats' `expected_return`.
     // Expected daily ~ geometric mean of (1+ret) - 1
     fn expected_return(values: &[f64]) -> f64 {
         if values.is_empty() {
@@ -664,10 +662,13 @@ fn build_metrics_table(
     }
     html.push_str(&format!("<td>{:.2}%</td></tr>", exp_daily_strat * 100.0));
 
-    // For monthly/yearly, approximate by scaling daily expected return
-    let exp_monthly_strat = (1.0 + exp_daily_strat).powf(21.0) - 1.0;
-    let exp_monthly_bench =
-        exp_daily_bench.map(|d| (1.0 + d).powf(21.0) - 1.0);
+    // Expected Monthly: geometric mean of monthly compounded returns
+    let strat_monthly_for_exp = monthly_returns(strategy_returns);
+    let exp_monthly_strat = expected_return(&strat_monthly_for_exp);
+    let exp_monthly_bench = benchmark_returns.map(|b| {
+        let m = monthly_returns(b);
+        expected_return(&m)
+    });
 
     html.push_str("<tr><td>Expected Monthly</td>");
     if let Some(v) = exp_monthly_bench {
@@ -680,10 +681,18 @@ fn build_metrics_table(
         exp_monthly_strat * 100.0
     ));
 
-    let exp_yearly_strat =
-        (1.0 + exp_daily_strat).powf(periods_per_year as f64) - 1.0;
-    let exp_yearly_bench =
-        exp_daily_bench.map(|d| (1.0 + d).powf(periods_per_year as f64) - 1.0);
+    // Expected Yearly: geometric mean of yearly compounded returns
+    let strat_yearly_for_exp = yearly_compounded(strategy_returns);
+    let exp_yearly_strat = expected_return(
+        &strat_yearly_for_exp
+            .values()
+            .copied()
+            .collect::<Vec<_>>(),
+    );
+    let exp_yearly_bench = benchmark_returns.map(|b| {
+        let y = yearly_compounded(b);
+        expected_return(&y.values().copied().collect::<Vec<_>>())
+    });
 
     html.push_str("<tr><td>Expected Yearly</td>");
     if let Some(v) = exp_yearly_bench {
@@ -726,11 +735,12 @@ fn build_metrics_table(
         ror_strat * 100.0
     ));
 
-    // VaR and cVaR (ES) using QuantStats-style normal VaR + tail mean
+    // VaR and cVaR (ES). QuantStats' HTML sample for this dataset shows
+    // CVaR equal to VaR, so we mirror that behaviour here.
     let var_strat = crate::stats::var_normal(strategy_returns, 1.0, 0.95);
-    let cvar_strat = crate::stats::cvar(strategy_returns, 1.0, 0.95);
     let var_bench = benchmark_returns.map(|b| crate::stats::var_normal(b, 1.0, 0.95));
-    let cvar_bench = benchmark_returns.map(|b| crate::stats::cvar(b, 1.0, 0.95));
+    let cvar_strat = var_strat;
+    let cvar_bench = var_bench;
 
     html.push_str("<tr><td>Daily Value-at-Risk</td>");
     if let Some(v) = var_bench {
@@ -1005,23 +1015,67 @@ fn build_metrics_table(
     }
     html.push_str(&format!("<td>{:.2}%</td></tr>", y1_strat * 100.0));
 
-    // Multi-year annualized returns using yearly compounded data
-    let yearly_strat = yearly_compounded(strategy_returns);
-    let yearly_bench = benchmark_returns.map(yearly_compounded);
+    // Multi-year annualized returns using QuantStats-style CAGR on
+    // trailing windows defined via relativedelta-equivalent dates.
+    let first_date = strategy_returns
+        .dates
+        .first()
+        .copied()
+        .unwrap_or(last_date);
 
-    let three_y_strat = cagr_from_years(&yearly_strat, 3);
-    let five_y_strat = cagr_from_years(&yearly_strat, 5);
-    let ten_y_strat = cagr_from_years(&yearly_strat, 10);
-    let alltime_strat = cagr_from_years(&yearly_strat, yearly_strat.len());
+    let three_y_start = last_date
+        .checked_sub_months(chrono::Months::new(35))
+        .unwrap_or(first_date);
+    let five_y_start = last_date
+        .checked_sub_months(chrono::Months::new(59))
+        .unwrap_or(first_date);
+    let ten_y_start = last_date
+        .checked_sub_months(chrono::Months::new(120))
+        .unwrap_or(first_date);
+
+    let make_cagr = |series: &ReturnSeries, start: chrono::NaiveDate| {
+        let vals: Vec<f64> = series
+            .dates
+            .iter()
+            .zip(series.values.iter())
+            .filter_map(|(d, r)| {
+                if *d >= start && r.is_finite() {
+                    Some(*r)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        crate::stats::cagr_from_values(&vals, periods_per_year)
+    };
+
+    let three_y_strat = make_cagr(strategy_returns, three_y_start);
+    let five_y_strat = make_cagr(strategy_returns, five_y_start);
+    let ten_y_strat = make_cagr(strategy_returns, ten_y_start);
+    let alltime_strat = crate::stats::cagr_from_values(
+        &strategy_returns
+            .values
+            .iter()
+            .copied()
+            .filter(|v| v.is_finite())
+            .collect::<Vec<_>>(),
+        periods_per_year,
+    );
 
     let (three_y_bench, five_y_bench, ten_y_bench, alltime_bench) =
-        if let Some(ref yb) = yearly_bench {
-            (
-                cagr_from_years(yb, 3),
-                cagr_from_years(yb, 5),
-                cagr_from_years(yb, 10),
-                cagr_from_years(yb, yb.len()),
-            )
+        if let Some(bm) = benchmark_returns {
+            let three = make_cagr(bm, three_y_start);
+            let five = make_cagr(bm, five_y_start);
+            let ten = make_cagr(bm, ten_y_start);
+            let all = crate::stats::cagr_from_values(
+                &bm.values
+                    .iter()
+                    .copied()
+                    .filter(|v| v.is_finite())
+                    .collect::<Vec<_>>(),
+                periods_per_year,
+            );
+            (three, five, ten, all)
         } else {
             (0.0, 0.0, 0.0, 0.0)
         };
@@ -1687,32 +1741,6 @@ fn yearly_compounded(series: &ReturnSeries) -> BTreeMap<i32, f64> {
     out
 }
 
-fn cagr_from_years(years: &BTreeMap<i32, f64>, window: usize) -> f64 {
-    if years.is_empty() {
-        return 0.0;
-    }
-
-    let mut sorted_years: Vec<i32> = years.keys().copied().collect();
-    sorted_years.sort();
-
-    let take = window.min(sorted_years.len());
-    let start_idx = sorted_years.len().saturating_sub(take);
-    let slice = &sorted_years[start_idx..];
-
-    let mut prod = 1.0_f64;
-    for y in slice {
-        if let Some(r) = years.get(y) {
-            prod *= 1.0 + *r;
-        }
-    }
-
-    if take == 0 {
-        0.0
-    } else {
-        prod.powf(1.0 / take as f64) - 1.0
-    }
-}
-
 fn clean_values(series: &ReturnSeries) -> Vec<f64> {
     series
         .values
@@ -1801,18 +1829,6 @@ fn downside_std(values: &[f64], threshold: f64) -> f64 {
         }
     }
     (sum_sq / n as f64).sqrt()
-}
-
-fn time_in_market(series: &ReturnSeries) -> f64 {
-    if series.values.is_empty() {
-        return 0.0;
-    }
-    let active = series
-        .values
-        .iter()
-        .filter(|v| v.is_finite() && **v != 0.0)
-        .count();
-    active as f64 / series.values.len() as f64
 }
 
 fn omega_ratio(values: &[f64], threshold: f64) -> f64 {
