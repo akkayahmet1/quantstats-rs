@@ -151,6 +151,43 @@ fn zero_line(height: f64) -> f64 {
     PADDING + (height - 2.0 * PADDING) / 2.0
 }
 
+fn draw_line_chart(
+    dates: &[NaiveDate],
+    values: &[f64],
+    title: &str,
+) -> String {
+    let width = WIDTH as f64;
+    let height = HEIGHT as f64;
+    if dates.is_empty() || values.is_empty() {
+        return String::new();
+    }
+
+    let xs = x_positions(values.len(), width);
+    let ys = scale_series(values, height);
+
+    let mut svg = String::new();
+    svg.push_str(&svg_header(WIDTH, HEIGHT));
+
+    svg.push_str(&format!(
+        r#"<text x="{x}" y="{y}" text-anchor="middle">{title}</text>"#,
+        x = width / 2.0,
+        y = PADDING - 10.0,
+        title = title
+    ));
+
+    let points: Vec<(f64, f64)> = xs
+        .iter()
+        .copied()
+        .zip(ys.iter().copied())
+        .collect();
+    svg.push_str(&polyline(&points, "#348dc1"));
+
+    add_time_axis(&mut svg, dates, &xs, width, height);
+
+    svg.push_str(svg_footer());
+    svg
+}
+
 fn draw_equity_curve(
     returns: &ReturnSeries,
     benchmark: Option<&ReturnSeries>,
@@ -420,7 +457,70 @@ pub fn vol_matched_returns(
     returns: &ReturnSeries,
     benchmark: Option<&ReturnSeries>,
 ) -> String {
-    draw_equity_curve(returns, benchmark, "Volatility Matched Returns")
+    if let Some(bm) = benchmark {
+        let len = returns.values.len().min(bm.values.len());
+        if len < 2 {
+            return draw_equity_curve(returns, benchmark, "Volatility Matched Returns");
+        }
+
+        let strat_vals: Vec<f64> = returns.values[..len]
+            .iter()
+            .copied()
+            .filter(|v| v.is_finite())
+            .collect();
+        let bench_vals: Vec<f64> = bm.values[..len]
+            .iter()
+            .copied()
+            .filter(|v| v.is_finite())
+            .collect();
+
+        if strat_vals.len() < 2 || bench_vals.len() < 2 {
+            return draw_equity_curve(returns, benchmark, "Volatility Matched Returns");
+        }
+
+        let s_std = {
+            let n = strat_vals.len() as f64;
+            let m = strat_vals.iter().sum::<f64>() / n;
+            let var = strat_vals
+                .iter()
+                .map(|x| {
+                    let d = x - m;
+                    d * d
+                })
+                .sum::<f64>()
+                / (n - 1.0);
+            var.sqrt()
+        };
+        let b_std = {
+            let n = bench_vals.len() as f64;
+            let m = bench_vals.iter().sum::<f64>() / n;
+            let var = bench_vals
+                .iter()
+                .map(|x| {
+                    let d = x - m;
+                    d * d
+                })
+                .sum::<f64>()
+                / (n - 1.0);
+            var.sqrt()
+        };
+
+        if s_std == 0.0 || b_std == 0.0 {
+            return draw_equity_curve(returns, benchmark, "Volatility Matched Returns");
+        }
+
+        let scale = b_std / s_std;
+        let mut scaled = returns.clone();
+        scaled.values = returns
+            .values
+            .iter()
+            .map(|v| if v.is_finite() { *v * scale } else { *v })
+            .collect();
+
+        draw_equity_curve(&scaled, benchmark, "Volatility Matched Returns")
+    } else {
+        draw_equity_curve(returns, benchmark, "Volatility Matched Returns")
+    }
 }
 
 pub fn histogram(returns: &ReturnSeries) -> String {
@@ -440,4 +540,178 @@ pub fn drawdown(returns: &ReturnSeries) -> String {
 
 pub fn returns_distribution(returns: &ReturnSeries) -> String {
     draw_histogram(&returns.values, 30, "Returns Distribution")
+}
+
+fn rolling_apply(values: &[f64], window: usize, f: impl Fn(&[f64]) -> f64) -> Vec<f64> {
+    if window == 0 || values.len() < window {
+        return Vec::new();
+    }
+    let mut out = Vec::with_capacity(values.len() - window + 1);
+    for i in 0..=values.len() - window {
+        out.push(f(&values[i..i + window]));
+    }
+    out
+}
+
+pub fn rolling_volatility(returns: &ReturnSeries, periods_per_year: u32) -> String {
+    let window = ((periods_per_year + 1) / 2) as usize;
+    let vols = rolling_apply(&returns.values, window, |win| {
+        let clean: Vec<f64> = win.iter().copied().filter(|v| v.is_finite()).collect();
+        if clean.len() < 2 {
+            return 0.0;
+        }
+        let n = clean.len() as f64;
+        let m = clean.iter().sum::<f64>() / n;
+        let var = clean
+            .iter()
+            .map(|x| {
+                let d = x - m;
+                d * d
+            })
+            .sum::<f64>()
+            / (n - 1.0);
+        var.sqrt() * (periods_per_year as f64).sqrt()
+    });
+
+    if vols.is_empty() {
+        return String::new();
+    }
+    let dates = &returns.dates[window - 1..window - 1 + vols.len()];
+    draw_line_chart(dates, &vols, "Rolling Volatility (6-Months)")
+}
+
+pub fn rolling_sharpe(
+    returns: &ReturnSeries,
+    rf: f64,
+    periods_per_year: u32,
+) -> String {
+    let window = ((periods_per_year + 1) / 2) as usize;
+    let sharpe_vals = rolling_apply(&returns.values, window, |win| {
+        let clean: Vec<f64> = win.iter().copied().filter(|v| v.is_finite()).collect();
+        if clean.len() < 2 {
+            return 0.0;
+        }
+        let n = clean.len() as f64;
+        let rf_per_period = if rf != 0.0 {
+            (1.0 + rf).powf(1.0 / periods_per_year as f64) - 1.0
+        } else {
+            0.0
+        };
+        let excess: Vec<f64> = clean.iter().map(|v| *v - rf_per_period).collect();
+        let mean = excess.iter().sum::<f64>() / n;
+        let var = excess
+            .iter()
+            .map(|x| {
+                let d = *x - mean;
+                d * d
+            })
+            .sum::<f64>()
+            / (n - 1.0);
+        let std = var.sqrt();
+        if std == 0.0 {
+            0.0
+        } else {
+            mean / std * (periods_per_year as f64).sqrt()
+        }
+    });
+
+    if sharpe_vals.is_empty() {
+        return String::new();
+    }
+    let dates = &returns.dates[window - 1..window - 1 + sharpe_vals.len()];
+    draw_line_chart(dates, &sharpe_vals, "Rolling Sharpe (6-Months)")
+}
+
+pub fn rolling_sortino(
+    returns: &ReturnSeries,
+    rf: f64,
+    periods_per_year: u32,
+) -> String {
+    let window = ((periods_per_year + 1) / 2) as usize;
+    let sortino_vals = rolling_apply(&returns.values, window, |win| {
+        let clean: Vec<f64> = win.iter().copied().filter(|v| v.is_finite()).collect();
+        if clean.len() < 2 {
+            return 0.0;
+        }
+        let n = clean.len() as f64;
+        let rf_per_period = if rf != 0.0 {
+            (1.0 + rf).powf(1.0 / periods_per_year as f64) - 1.0
+        } else {
+            0.0
+        };
+        let excess: Vec<f64> = clean.iter().map(|v| *v - rf_per_period).collect();
+        let mean = excess.iter().sum::<f64>() / n;
+        let mut sum_sq_down = 0.0_f64;
+        for x in &excess {
+            if *x < 0.0 {
+                sum_sq_down += x * x;
+            }
+        }
+        if sum_sq_down == 0.0 {
+            return 0.0;
+        }
+        let downside = (sum_sq_down / n).sqrt();
+        mean / downside * (periods_per_year as f64).sqrt()
+    });
+
+    if sortino_vals.is_empty() {
+        return String::new();
+    }
+    let dates = &returns.dates[window - 1..window - 1 + sortino_vals.len()];
+    draw_line_chart(dates, &sortino_vals, "Rolling Sortino (6-Months)")
+}
+
+pub fn rolling_beta(
+    returns: &ReturnSeries,
+    benchmark: &ReturnSeries,
+    periods_per_year: u32,
+) -> String {
+    let window = ((periods_per_year + 1) / 2) as usize;
+    let len = returns.values.len().min(benchmark.values.len());
+    if window == 0 || len < window {
+        return String::new();
+    }
+
+    let strat = &returns.values[..len];
+    let bench = &benchmark.values[..len];
+    let betas = rolling_apply(strat, window, |win_s| {
+        let idx_start = 0; // placeholder, see below
+        let start = idx_start;
+        let end = idx_start + window;
+        let mut pairs: Vec<(f64, f64)> = Vec::with_capacity(window);
+        for i in start..end {
+            let s = win_s[i - start];
+            let b = bench[i];
+            if s.is_finite() && b.is_finite() {
+                pairs.push((s, b));
+            }
+        }
+        if pairs.len() < 2 {
+            return 0.0;
+        }
+        let n = pairs.len() as f64;
+        let mean_s = pairs.iter().map(|(s, _)| s).sum::<f64>() / n;
+        let mean_b = pairs.iter().map(|(_, b)| b).sum::<f64>() / n;
+        let mut cov = 0.0_f64;
+        let mut var_b = 0.0_f64;
+        for (s, b) in &pairs {
+            let ds = *s - mean_s;
+            let db = *b - mean_b;
+            cov += ds * db;
+            var_b += db * db;
+        }
+        cov /= n - 1.0;
+        var_b /= n - 1.0;
+        if var_b == 0.0 {
+            0.0
+        } else {
+            cov / var_b
+        }
+    });
+
+    if betas.is_empty() {
+        return String::new();
+    }
+    let dates = &returns.dates[window - 1..window - 1 + betas.len()];
+    draw_line_chart(dates, &betas, "Rolling Beta (6-Months)")
 }
