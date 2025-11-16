@@ -308,7 +308,15 @@ fn draw_equity_curve(
             let ret_pct = (v - 1.0) * 100.0;
             let label = format!("{:.0}%", ret_pct);
 
-            // Tick line
+            // Background horizontal grid line across the plot area.
+            svg.push_str(&format!(
+                r##"<line x1="{x1:.2}" y1="{y:.2}" x2="{x2:.2}" y2="{y:.2}" stroke="#dddddd" stroke-width="0.5" />"##,
+                x1 = PADDING,
+                x2 = width - PADDING,
+                y = y
+            ));
+
+            // Tick line at the y-axis.
             svg.push_str(&format!(
                 r##"<line x1="{x1:.2}" y1="{y:.2}" x2="{x2:.2}" y2="{y:.2}" stroke="#ccc" stroke-width="1" />"##,
                 x1 = PADDING - 3.0,
