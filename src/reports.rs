@@ -1838,37 +1838,33 @@ fn skew_kurtosis(values: &[f64]) -> (f64, f64) {
     }
     let n_f = n as f64;
     let m = mean(values);
-    let var = {
-        let mut acc = 0.0_f64;
-        for x in values {
-            let d = *x - m;
-            acc += d * d;
-        }
-        if n_f > 1.0 {
-            acc / (n_f - 1.0)
-        } else {
-            0.0
-        }
-    };
-    let std = var.sqrt();
-    if std == 0.0 {
-        return (0.0, 0.0);
-    }
 
+    // Population second moment (ddof = 0), to match pandas'
+    // Series.kurtosis/skew with bias=True.
+    let mut m2 = 0.0_f64;
     let mut m3 = 0.0_f64;
     let mut m4 = 0.0_f64;
     for x in values {
         let d = *x - m;
         let d2 = d * d;
+        m2 += d2;
         m3 += d2 * d;
         m4 += d2 * d2;
     }
+    m2 /= n_f;
     m3 /= n_f;
     m4 /= n_f;
 
-    // Skewness and excess kurtosis, matching pandas' behavior (normal -> 0)
-    let skew = m3 / std.powi(3);
-    let kurt = m4 / std.powi(4) - 3.0;
+    if m2 == 0.0 {
+        return (0.0, 0.0);
+    }
+
+    let std_pop = m2.sqrt();
+
+    // Skewness and excess kurtosis (normal -> 0), with population
+    // moments, matching pandas' default (bias=True).
+    let skew = m3 / std_pop.powi(3);
+    let kurt = m4 / (m2 * m2) - 3.0;
     (skew, kurt)
 }
 
@@ -1941,7 +1937,9 @@ fn max_consecutive_streak(values: &[f64], positive: bool) -> u32 {
             if current > best {
                 best = current;
             }
-        } else if *v != 0.0 {
+        } else {
+            // Any non-winning (including zeros) breaks the streak,
+            // matching QuantStats' consecutive_wins / consecutive_losses.
             current = 0;
         }
     }
