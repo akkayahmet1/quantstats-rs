@@ -844,10 +844,9 @@ fn build_metrics_table(
 
     let tail_strat = tail_ratio(&strat_vals);
     let tail_bench = bench_vals.as_ref().map(|v| tail_ratio(v));
-    let csr_strat = pf_strat * tail_strat;
-    let csr_bench = pf_bench
-        .zip(tail_bench)
-        .map(|(pf, t)| pf * t);
+    let csr_strat = common_sense_ratio_from_values(&strat_vals);
+    let csr_bench =
+        bench_vals.as_ref().map(|v| common_sense_ratio_from_values(v));
 
     html.push_str("<tr><td>Common Sense Ratio</td>");
     if let Some(v) = csr_bench {
@@ -866,32 +865,9 @@ fn build_metrics_table(
     }
     html.push_str(&format!("<td>{:.2}</td></tr>", tail_strat));
 
-    let cpc_strat = pf_strat
-        * (max_wins_strat as f64
-            / strat_vals
-                .iter()
-                .filter(|v| **v != 0.0)
-                .count()
-                .max(1) as f64)
-        * payoff_strat;
-    let cpc_bench = if let Some(v) = payoff_bench {
-        if let Some(pf) = pf_bench {
-            if let Some(wins) = max_wins_bench {
-                let total = bench_vals
-                    .as_ref()
-                    .map(|vals| vals.iter().filter(|r| **r != 0.0).count())
-                    .unwrap_or(0)
-                    .max(1) as f64;
-                Some(pf * (wins as f64 / total) * v)
-            } else {
-                None
-            }
-        } else {
-            None
-        }
-    } else {
-        None
-    };
+    let cpc_strat = cpc_index_from_values(&strat_vals);
+    let cpc_bench =
+        bench_vals.as_ref().map(|v| cpc_index_from_values(v));
 
     html.push_str("<tr><td>CPC Index</td>");
     if let Some(v) = cpc_bench {
@@ -1950,20 +1926,42 @@ fn profit_factor(values: &[f64]) -> f64 {
     }
 }
 
+fn quantile(values: &[f64], q: f64) -> f64 {
+    if values.is_empty() {
+        return 0.0;
+    }
+    let mut v: Vec<f64> = values
+        .iter()
+        .copied()
+        .filter(|x| x.is_finite())
+        .collect();
+    if v.is_empty() {
+        return 0.0;
+    }
+    v.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+    let n = v.len() as f64;
+    let pos = q.clamp(0.0, 1.0) * (n - 1.0);
+    let lo = pos.floor() as usize;
+    let hi = pos.ceil() as usize;
+    if lo == hi {
+        v[lo]
+    } else {
+        let w = pos - lo as f64;
+        v[lo] + (v[hi] - v[lo]) * w
+    }
+}
+
 fn tail_ratio(values: &[f64]) -> f64 {
     if values.is_empty() {
         return 0.0;
     }
-    let mut v = values.to_vec();
-    v.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-    let hi_idx = (0.99 * (v.len() as f64 - 1.0)).round() as usize;
-    let lo_idx = (0.01 * (v.len() as f64 - 1.0)).round() as usize;
-    let hi = v[hi_idx];
-    let lo = v[lo_idx];
-    if lo == 0.0 {
+    let upper = quantile(values, 0.95);
+    let lower = quantile(values, 0.05);
+    if lower == 0.0 {
         0.0
     } else {
-        hi / lo.abs()
+        (upper / lower).abs()
     }
 }
 
@@ -1971,7 +1969,11 @@ fn outlier_win_ratio(values: &[f64]) -> f64 {
     if values.is_empty() {
         return 0.0;
     }
-    let wins: Vec<f64> = values.iter().copied().filter(|v| *v >= 0.0).collect();
+    let wins: Vec<f64> = values
+        .iter()
+        .copied()
+        .filter(|v| *v >= 0.0)
+        .collect();
     if wins.is_empty() {
         return 0.0;
     }
@@ -1979,18 +1981,19 @@ fn outlier_win_ratio(values: &[f64]) -> f64 {
     if avg_pos == 0.0 {
         return 0.0;
     }
-    let mut v = values.to_vec();
-    v.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-    let hi_idx = (0.99 * (v.len() as f64 - 1.0)).round() as usize;
-    let hi = v[hi_idx];
-    hi / avg_pos
+    let q = quantile(values, 0.99);
+    q / avg_pos
 }
 
 fn outlier_loss_ratio(values: &[f64]) -> f64 {
     if values.is_empty() {
         return 0.0;
     }
-    let losses: Vec<f64> = values.iter().copied().filter(|v| *v < 0.0).collect();
+    let losses: Vec<f64> = values
+        .iter()
+        .copied()
+        .filter(|v| *v < 0.0)
+        .collect();
     if losses.is_empty() {
         return 0.0;
     }
@@ -1998,11 +2001,34 @@ fn outlier_loss_ratio(values: &[f64]) -> f64 {
     if avg_neg == 0.0 {
         return 0.0;
     }
-    let mut v = values.to_vec();
-    v.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-    let lo_idx = (0.01 * (v.len() as f64 - 1.0)).round() as usize;
-    let lo = v[lo_idx];
-    lo / avg_neg
+    let q = quantile(values, 0.01);
+    q / avg_neg
+}
+
+fn win_rate_from_values(values: &[f64]) -> f64 {
+    let non_zero: Vec<f64> = values
+        .iter()
+        .copied()
+        .filter(|v| v.is_finite() && *v != 0.0)
+        .collect();
+    if non_zero.is_empty() {
+        return 0.0;
+    }
+    let wins = non_zero.iter().filter(|v| **v > 0.0).count() as f64;
+    wins / non_zero.len() as f64
+}
+
+fn cpc_index_from_values(values: &[f64]) -> f64 {
+    let pf = profit_factor(values);
+    let wr = win_rate_from_values(values);
+    let wl = payoff_ratio(values);
+    pf * wr * wl
+}
+
+fn common_sense_ratio_from_values(values: &[f64]) -> f64 {
+    let pf = profit_factor(values);
+    let tr = tail_ratio(values);
+    pf * tr
 }
 
 fn drawdown_series(returns: &ReturnSeries) -> Vec<f64> {
