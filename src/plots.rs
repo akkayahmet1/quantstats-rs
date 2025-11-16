@@ -55,6 +55,42 @@ fn format_percentage(value: f64) -> String {
     }
 }
 
+fn nice_step(step: f64) -> f64 {
+    if step <= 0.0 {
+        return 1.0;
+    }
+    let mag = 10f64.powf(step.log10().floor());
+    let norm = step / mag;
+    let nice = if norm < 1.5 {
+        1.0
+    } else if norm < 3.0 {
+        2.0
+    } else if norm < 7.0 {
+        5.0
+    } else {
+        10.0
+    };
+    nice * mag
+}
+
+fn generate_ticks(min_v: f64, max_v: f64) -> Vec<f64> {
+    let min = min_v.min(0.0);
+    let mut max = max_v.max(0.0);
+    if (max - min).abs() < 1e-9 {
+        max = min + 0.1;
+    }
+    let step = nice_step((max - min) / 4.0);
+    let start = (min / step).floor() * step;
+    let end = (max / step).ceil() * step;
+    let mut ticks = Vec::new();
+    let mut val = start;
+    while val <= end + 1e-9 {
+        ticks.push(val);
+        val += step;
+    }
+    ticks
+}
+
 fn clean_values(values: &[f64]) -> Vec<f64> {
     values.iter().copied().filter(|v| v.is_finite()).collect()
 }
@@ -1047,10 +1083,10 @@ pub fn eoy_returns(strategy: &ReturnSeries, benchmark: Option<&ReturnSeries>) ->
 
     let width = WIDTH as f64;
     let height = HEIGHT as f64;
-    let left_pad = 50.0;
-    let right_pad = 20.0;
-    let top_pad = 40.0;
-    let bottom_pad = 40.0;
+    let left_pad = 65.0;
+    let right_pad = 30.0;
+    let top_pad = 50.0;
+    let bottom_pad = 50.0;
 
     // Collect all values to determine vertical scale.
     let mut min_v = 0.0_f64;
@@ -1075,27 +1111,26 @@ pub fn eoy_returns(strategy: &ReturnSeries, benchmark: Option<&ReturnSeries>) ->
             }
         }
     }
-    if min_v > 0.0 {
-        min_v = 0.0;
-    }
-    if max_v < 0.0 {
-        max_v = 0.0;
-    }
-    let range = max_v - min_v;
-    if range == 0.0 {
+
+    let ticks = generate_ticks(min_v, max_v);
+    if ticks.len() < 2 {
         return String::new();
     }
-
+    let tick_min = *ticks.first().unwrap();
+    let tick_max = *ticks.last().unwrap();
+    let span = tick_max - tick_min;
     let inner_height = height - top_pad - bottom_pad;
     let value_to_y = |v: f64| {
-        let norm = (v - min_v) / range;
+        let norm = (v - tick_min) / span;
         top_pad + (1.0 - norm) * inner_height
     };
     let zero_y = value_to_y(0.0);
 
     let groups = years.len();
     let group_width = (width - left_pad - right_pad) / (groups as f64).max(1.0);
-    let bar_width = group_width * 0.35;
+    let series_count = if benchmark.is_some() { 2 } else { 1 };
+    let bar_area = group_width * 0.7;
+    let bar_width = bar_area / series_count.max(1) as f64;
 
     let mut svg = String::new();
     svg.push_str(&svg_header(WIDTH, HEIGHT));
@@ -1105,13 +1140,30 @@ pub fn eoy_returns(strategy: &ReturnSeries, benchmark: Option<&ReturnSeries>) ->
         "EOY Returns"
     };
 
-    // Zero line
-    svg.push_str(&format!(
-        r##"<line x1="{x1:.2}" y1="{y:.2}" x2="{x2:.2}" y2="{y:.2}" stroke="#ccc" stroke-width="1" />"##,
-        x1 = left_pad,
-        x2 = width - right_pad,
-        y = zero_y
-    ));
+    // Grid lines and labels
+    for tick in ticks {
+        let y = value_to_y(tick);
+        let color = if (tick).abs() < 1e-9 {
+            "#000"
+        } else {
+            "#e0e0e0"
+        };
+        svg.push_str(&format!(
+            r##"<line x1="{x1:.2}" y1="{y:.2}" x2="{x2:.2}" y2="{y:.2}" stroke="{color}" stroke-width="1" />"##,
+            x1 = left_pad,
+            x2 = width - right_pad,
+            y = y,
+            color = color
+        ));
+        if tick >= 0.0 || color == "#000" {
+            svg.push_str(&format!(
+                r##"<text x="{x:.2}" y="{y:.2}" text-anchor="end" fill="#666" dy="-4">{label}</text>"##,
+                x = left_pad - 6.0,
+                y = y,
+                label = format_percentage(tick)
+            ));
+        }
+    }
 
     for (idx, year) in years.iter().enumerate() {
         let group_left = left_pad + idx as f64 * group_width;
@@ -1121,7 +1173,7 @@ pub fn eoy_returns(strategy: &ReturnSeries, benchmark: Option<&ReturnSeries>) ->
         svg.push_str(&format!(
             r##"<text x="{x:.2}" y="{y:.2}" text-anchor="middle" fill="#808080">{year}</text>"##,
             x = cx,
-            y = height - bottom_pad + 14.0,
+            y = height - bottom_pad + 16.0,
             year = year
         ));
 
@@ -1133,7 +1185,7 @@ pub fn eoy_returns(strategy: &ReturnSeries, benchmark: Option<&ReturnSeries>) ->
                 } else {
                     (zero_y, y_val)
                 };
-                let x = cx - bar_width * 0.6;
+                let x = cx - bar_area / 2.0;
                 let h = (bottom - top).abs();
                 svg.push_str(&format!(
                     r##"<rect x="{x:.2}" y="{y:.2}" width="{w:.2}" height="{h:.2}" fill="#ff9933" />"##,
@@ -1152,7 +1204,11 @@ pub fn eoy_returns(strategy: &ReturnSeries, benchmark: Option<&ReturnSeries>) ->
             } else {
                 (zero_y, y_val)
             };
-            let x = cx + bar_width * 0.6 - bar_width;
+            let x = if series_count == 1 {
+                cx - bar_width / 2.0
+            } else {
+                cx - bar_area / 2.0 + bar_width
+            };
             let h = (bottom - top).abs();
             svg.push_str(&format!(
                 r##"<rect x="{x:.2}" y="{y:.2}" width="{w:.2}" height="{h:.2}" fill="#348dc1" />"##,
@@ -1162,6 +1218,29 @@ pub fn eoy_returns(strategy: &ReturnSeries, benchmark: Option<&ReturnSeries>) ->
                 h = h
             ));
         }
+    }
+
+    // Legend
+    let legend_y = top_pad - 24.0;
+    let legend_x = width - right_pad - 140.0;
+    let entries = if benchmark.is_some() {
+        vec![("Benchmark", BENCHMARK_COLOR), ("Strategy", STRATEGY_COLOR)]
+    } else {
+        vec![("Strategy", STRATEGY_COLOR)]
+    };
+    for (idx, (label, color)) in entries.iter().enumerate() {
+        let y = legend_y + idx as f64 * 16.0;
+        svg.push_str(&format!(
+            r##"<rect x="{x:.2}" y="{y:.2}" width="12" height="12" fill="{color}" />"##,
+            x = legend_x,
+            y = y
+        ));
+        svg.push_str(&format!(
+            r##"<text x="{x:.2}" y="{y:.2}" text-anchor="start" fill="#333">{label}</text>"##,
+            x = legend_x + 18.0,
+            y = y + 10.0,
+            label = label
+        ));
     }
 
     svg.push_str(svg_footer());
