@@ -2,13 +2,15 @@ use crate::utils::ReturnSeries;
 use chrono::{Datelike, NaiveDate};
 use std::collections::BTreeMap;
 
-const WIDTH: i32 = 800;
-const HEIGHT: i32 = 300;
+// Use an aspect ratio and base size close to the
+// Matplotlib QuantStats figures (~576x288).
+const WIDTH: i32 = 576;
+const HEIGHT: i32 = 288;
 const PADDING: f64 = 30.0;
 
 fn svg_header(width: i32, height: i32) -> String {
     format!(
-        r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {w} {h}" width="100%" height="100%"><style>text{{font-family:Arial,sans-serif;font-size:11px;fill:#555}}</style>"#,
+        r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {w} {h}"><style>text{{font-family:Arial,sans-serif;font-size:10px;fill:#666}}</style>"#,
         w = width,
         h = height
     )
