@@ -807,14 +807,57 @@ fn build_metrics_table(
     }
     html.push_str(&format!("<td>{:.2}</td></tr>", gp_strat));
 
-    html.push_str("<tr><td>Gain/Pain (1M)</td>");
-    // For simplicity, reuse daily Gain/Pain for now
-    if let Some(v) = gp_bench {
-        html.push_str(&format!("<td>{:.2}</td>", v));
-    } else if benchmark.is_some() {
-        html.push_str("<td>-</td>");
+    // Gain/Pain on monthly summed returns (QuantStats' Gain/Pain (1M))
+    fn gain_to_pain_monthly(series: &ReturnSeries) -> Option<f64> {
+        use std::collections::BTreeMap;
+
+        let mut grouped: BTreeMap<(i32, u32), f64> = BTreeMap::new();
+        for (d, r) in series.dates.iter().zip(series.values.iter()) {
+            if !r.is_finite() {
+                continue;
+            }
+            grouped
+                .entry((d.year(), d.month()))
+                .and_modify(|v| *v += *r)
+                .or_insert(*r);
+        }
+
+        if grouped.is_empty() {
+            return None;
+        }
+
+        let mut total = 0.0_f64;
+        let mut downside = 0.0_f64;
+        for (_, v) in grouped {
+            total += v;
+            if v < 0.0 {
+                downside += -v;
+            }
+        }
+
+        if downside == 0.0 {
+            None
+        } else {
+            Some(total / downside)
+        }
     }
-    html.push_str(&format!("<td>{:.2}</td></tr>", gp_strat));
+
+    let gp1m_strat = gain_to_pain_monthly(strategy_returns);
+    let gp1m_bench = benchmark_returns.and_then(|b| gain_to_pain_monthly(b));
+
+    html.push_str("<tr><td>Gain/Pain (1M)</td>");
+    if benchmark.is_some() {
+        if let Some(v) = gp1m_bench {
+            html.push_str(&format!("<td>{:.2}</td>", v));
+        } else {
+            html.push_str("<td>-</td>");
+        }
+    }
+    if let Some(v) = gp1m_strat {
+        html.push_str(&format!("<td>{:.2}</td></tr>", v));
+    } else {
+        html.push_str("<td>-</td></tr>");
+    }
 
     html.push_str(&format!(
         r#"<tr><td colspan="{}"><hr></td></tr>"#,

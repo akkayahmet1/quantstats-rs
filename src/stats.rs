@@ -451,57 +451,70 @@ fn compute_drawdown_segments(returns: &ReturnSeries) -> Vec<Drawdown> {
         drawdowns.push(dd);
     }
 
-    // Identify drawdown segments
-    let mut segments: Vec<Drawdown> = Vec::new();
-    let mut in_dd = false;
-    let mut start_idx = 0usize;
-    let mut trough_idx = 0usize;
-    let mut min_dd = 0.0_f64;
+    // Identify start and end indices following QuantStats'
+    // drawdown_details() semantics.
+    let mut starts: Vec<usize> = Vec::new();
+    let mut ends: Vec<usize> = Vec::new();
 
     for i in 0..n {
-        let dd = drawdowns[i];
-        if !in_dd {
-            if dd < 0.0 {
-                in_dd = true;
-                start_idx = i;
-                trough_idx = i;
-                min_dd = dd;
-            }
+        let no_dd = drawdowns[i] >= 0.0;
+        let prev_no_dd = if i == 0 {
+            true
         } else {
+            drawdowns[i - 1] >= 0.0
+        };
+
+        // Start when we enter a drawdown region
+        if !no_dd && prev_no_dd {
+            starts.push(i);
+        }
+
+        // Candidate end when we exit a drawdown region (dd becomes >= 0)
+        if no_dd && !prev_no_dd {
+            // Python shifts the end marker back by one, so store i-1
+            let end_idx = i.saturating_sub(1);
+            ends.push(end_idx);
+        }
+    }
+
+    // Handle edge case: drawdown series begins in a drawdown
+    if !ends.is_empty() && !starts.is_empty() && starts[0] > ends[0] {
+        starts.insert(0, 0);
+    }
+
+    // Handle edge case: series ends in a drawdown
+    if ends.is_empty() || (!starts.is_empty() && starts[starts.len() - 1] > ends[ends.len() - 1]) {
+        ends.push(n - 1);
+    }
+
+    let mut segments: Vec<Drawdown> = Vec::new();
+
+    for (s_idx, e_idx) in starts.into_iter().zip(ends.into_iter()) {
+        if s_idx > e_idx || s_idx >= n || e_idx >= n {
+            continue;
+        }
+
+        // Find trough (minimum drawdown) within [s_idx, e_idx]
+        let mut trough_idx = s_idx;
+        let mut min_dd = drawdowns[s_idx];
+        for i in s_idx..=e_idx {
+            let dd = drawdowns[i];
             if dd < min_dd {
                 min_dd = dd;
                 trough_idx = i;
             }
-
-            if dd >= 0.0 {
-                // Recovered
-                let start_date = returns.dates[start_idx];
-                let end_date = returns.dates[i];
-                let duration = (i - start_idx + 1) as u32;
-                segments.push(Drawdown {
-                    start: start_date,
-                    trough: returns.dates[trough_idx],
-                    end: end_date,
-                    depth: min_dd,
-                    duration,
-                });
-                in_dd = false;
-            }
         }
-    }
 
-    // Handle open drawdown at the end
-    if in_dd {
-        let last = n - 1;
-        let start_date = returns.dates[start_idx];
-        let end_date = returns.dates[last];
-        let duration = (last - start_idx + 1) as u32;
+        let start_date = returns.dates[s_idx];
+        let end_date = returns.dates[e_idx];
+        let duration_days = (end_date - start_date).num_days() + 1;
+
         segments.push(Drawdown {
             start: start_date,
             trough: returns.dates[trough_idx],
             end: end_date,
             depth: min_dd,
-            duration,
+            duration: duration_days as u32,
         });
     }
 
