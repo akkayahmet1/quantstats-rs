@@ -1519,11 +1519,6 @@ fn build_metrics_table(
     ));
 
     // Beta / Alpha / Correlation / Treynor
-    html.push_str(&format!(
-        r#"<tr><td colspan="{}"><hr></td></tr>"#,
-        colspan
-    ));
-
     html.push_str("<tr><td>Beta</td>");
     if benchmark.is_some() {
         html.push_str("<td>-</td>");
