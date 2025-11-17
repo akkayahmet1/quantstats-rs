@@ -178,7 +178,7 @@ pub fn html<'a>(
     let eoy_returns_svg = plots::eoy_returns(&prepared_returns, benchmark_ref);
     tpl = tpl.replace("{{eoy_returns}}", &eoy_returns_svg);
 
-    let monthly_dist_svg = plots::monthly_distribution(&prepared_returns);
+    let monthly_dist_svg = plots::monthly_distribution(&prepared_returns, benchmark_ref);
     tpl = tpl.replace("{{monthly_dist}}", &monthly_dist_svg);
 
     let daily_returns_svg = plots::daily_returns(&prepared_returns);

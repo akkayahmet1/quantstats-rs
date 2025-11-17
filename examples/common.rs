@@ -1273,3 +1273,9 @@ pub fn demo_benchmark() -> ReturnSeries {
 
     ReturnSeries::new(dates, returns, Some("Benchmark".to_string())).unwrap()
 }
+
+// When Cargo treats this file as a standalone example binary, provide
+// a no-op main so compilation succeeds. In the "real" examples we use
+// this file as a module via `mod common;` and the presence of this
+// function is harmless.
+fn main() {}
