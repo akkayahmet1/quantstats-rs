@@ -738,8 +738,15 @@ fn draw_line_chart(dates: &[NaiveDate], values: &[f64], title: &str) -> String {
     }
     svg.push_str(&polyline(&points, "#348dc1"));
 
-    // Time axis is always drawn at the bottom, matching QuantStats.
-    add_time_axis(&mut svg, dates, &xs, width, height, None, false, false);
+    // Time axis at the bottom:
+    // - For daily returns, draw a dashed black baseline to emphasize the x-axis.
+    // - For other charts (e.g., underwater), only show ticks + labels (no baseline).
+    let (draw_axis, dashed_axis) = if title == "Daily Returns (Cumulative Sum)" {
+        (true, true)
+    } else {
+        (false, false)
+    };
+    add_time_axis(&mut svg, dates, &xs, width, height, None, draw_axis, dashed_axis);
 
     svg.push_str(svg_footer());
     wrap_plot(title, svg)
