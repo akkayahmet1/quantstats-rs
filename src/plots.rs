@@ -11,6 +11,7 @@ const PADDING: f64 = 36.0;
 const STRATEGY_COLOR: &str = "#348dc1";
 const BENCHMARK_COLOR: &str = "#ff9933";
 const ACCENT_COLOR: &str = "#8c8c8c";
+const MEAN_GUIDE_COLOR: &str = "#ff0000";
 
 struct IndexedSeries {
     label: Option<String>,
@@ -327,21 +328,33 @@ fn render_indexed_line_chart(
 
     for guide in guides {
         let y = scale_value(guide.value, min_v, max_v, height);
+        let color = if guide.label.as_deref() == Some("Mean") {
+            MEAN_GUIDE_COLOR
+        } else {
+            guide.color
+        };
+        let dash = if guide.label.as_deref() == Some("Mean") {
+            "4 3"
+        } else if guide.dash {
+            "4 3"
+        } else {
+            "0"
+        };
         svg.push_str(&format!(
             r#"<line x1="{x1:.2}" y1="{y:.2}" x2="{x2:.2}" y2="{y:.2}" stroke="{color}" stroke-width="{width}" stroke-dasharray="{dash}" />"#,
             x1 = PADDING,
             x2 = width - PADDING,
             y = y,
-            color = guide.color,
+            color = color,
             width = guide.width,
-            dash = if guide.dash { "4 3" } else { "0" }
+            dash = dash
         ));
         if let Some(label) = &guide.label {
             svg.push_str(&format!(
                 r#"<text x="{x:.2}" y="{y:.2}" text-anchor="end" fill="{color}" font-size="9">{label}</text>"#,
                 x = width - PADDING,
                 y = y - 4.0,
-                color = guide.color,
+                color = color,
                 label = label
             ));
         }
@@ -350,7 +363,7 @@ fn render_indexed_line_chart(
     if show_zero_line {
         let y = scale_value(0.0, min_v, max_v, height);
         svg.push_str(&format!(
-            r##"<line x1="{x1:.2}" y1="{y:.2}" x2="{x2:.2}" y2="{y:.2}" stroke="#bbbbbb" stroke-width="1" stroke-dasharray="4 3" />"##,
+            r##"<line x1="{x1:.2}" y1="{y:.2}" x2="{x2:.2}" y2="{y:.2}" stroke="#000000" stroke-width="1" stroke-dasharray="4 3" />"##,
             x1 = PADDING,
             x2 = width - PADDING,
             y = y
