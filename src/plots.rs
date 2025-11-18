@@ -1590,14 +1590,62 @@ pub fn drawdown_periods(returns: &ReturnSeries) -> String {
         min_v -= 0.5;
     }
 
+    // Use "nice" ticks for y-axis and grid
+    let ticks = generate_ticks(min_v, max_v);
+    if ticks.len() < 2 {
+        return String::new();
+    }
+    let tick_min = *ticks.first().unwrap();
+    let tick_max = *ticks.last().unwrap();
+    let span = (tick_max - tick_min).max(1e-9);
+
     let value_to_y = |value: f64| {
         let inner_height = height - 2.0 * PADDING;
-        let norm = (value - min_v) / (max_v - min_v);
+        let norm = (value - tick_min) / span;
         PADDING + (1.0 - norm) * inner_height
     };
 
     let mut svg = String::new();
     svg.push_str(&svg_header(WIDTH, HEIGHT));
+
+    // y-axis with horizontal grid and labels
+    let axis_left = PADDING;
+    let axis_top = PADDING;
+    let axis_bottom = height - PADDING;
+    svg.push_str(&format!(
+        r##"<line x1="{x:.2}" y1="{y1:.2}" x2="{x:.2}" y2="{y2:.2}" stroke="#000" stroke-width="1" />"##,
+        x = axis_left,
+        y1 = axis_top,
+        y2 = axis_bottom
+    ));
+    for tick in &ticks {
+        let mut y = value_to_y(*tick);
+        if y < axis_top {
+            y = axis_top;
+        } else if y > axis_bottom {
+            y = axis_bottom;
+        }
+        let stroke = "#eeeeee";
+        svg.push_str(&format!(
+            r##"<line x1="{x1:.2}" y1="{y:.2}" x2="{x2:.2}" y2="{y:.2}" stroke="{stroke}" stroke-width="1" />"##,
+            x1 = axis_left,
+            x2 = width - PADDING,
+            y = y,
+            stroke = stroke
+        ));
+        svg.push_str(&format!(
+            r##"<line x1="{x1:.2}" y1="{y:.2}" x2="{x2:.2}" y2="{y:.2}" stroke="#000" stroke-width="1" />"##,
+            x1 = axis_left - 4.0,
+            x2 = axis_left,
+            y = y
+        ));
+        svg.push_str(&format!(
+            r##"<text x="{x:.2}" y="{y:.2}" text-anchor="end" fill="#333">{label}</text>"##,
+            x = axis_left - 6.0,
+            y = y - 2.0,
+            label = format_percentage(*tick)
+        ));
+    }
 
     let zero_y = value_to_y(0.0);
     svg.push_str(&format!(
@@ -1634,8 +1682,8 @@ pub fn drawdown_periods(returns: &ReturnSeries) -> String {
         ));
 
         svg.push_str(&format!(
-            r##"<text x="{x:.2}" y="{y:.2}" text-anchor="end" fill="#af4b64" font-size="9">{label}</text>"##,
-            x = width - PADDING,
+            r##"<text x="{x:.2}" y="{y:.2}" text-anchor="start" fill="#af4b64" font-size="9">{label}</text>"##,
+            x = PADDING + 8.0,
             y = PADDING + 12.0 + idx as f64 * 12.0,
             label = format!("{}: {}d", idx + 1, seg.duration)
         ));
