@@ -35,7 +35,7 @@
 ## Testing Guidelines
 
 - Add unit tests inside the corresponding module file under `#[cfg(test)]` blocks.
-- For metrics, prefer table‑driven tests comparing against known Python QuantStats outputs (e.g., values extracted from `SOL_USDT_breakout_quantstats.html`).
+- For metrics, prefer table‑driven tests comparing against known Python QuantStats outputs.
 - Ensure `cargo test` passes before opening a PR.
 
 ## Commit & Pull Request Guidelines
