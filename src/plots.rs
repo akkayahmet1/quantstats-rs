@@ -201,15 +201,80 @@ fn render_indexed_line_chart(
 
     let width = WIDTH as f64;
     let height = HEIGHT as f64;
-    let axis_xs = x_positions(dates.len(), width);
+
+    let mut min_idx = usize::MAX;
+    let mut max_idx = 0usize;
+    for series in series_list {
+        for (idx, value) in &series.points {
+            if !value.is_finite() {
+                continue;
+            }
+            if *idx < min_idx {
+                min_idx = *idx;
+            }
+            if *idx > max_idx {
+                max_idx = *idx;
+            }
+        }
+    }
+    if min_idx == usize::MAX {
+        return String::new();
+    }
+    if min_idx >= dates.len() {
+        min_idx = 0;
+    }
+    if max_idx >= dates.len() {
+        max_idx = dates.len().saturating_sub(1);
+    }
+    if max_idx < min_idx {
+        max_idx = min_idx;
+    }
+    let range_dates = &dates[min_idx..=max_idx];
+    let axis_xs = x_positions(range_dates.len(), width);
 
     let (min_v, max_v) = match extent_from_series(series_list, guides, include_zero) {
         Some(extent) => extent,
         None => return String::new(),
     };
+    let ticks = generate_ticks(min_v, max_v);
 
     let mut svg = String::new();
     svg.push_str(&svg_header(WIDTH, HEIGHT));
+
+    // horizontal grid + y-axis labels
+    let axis_left = PADDING;
+    let axis_right = width - PADDING;
+    let axis_top = PADDING;
+    let axis_bottom = height - PADDING;
+    svg.push_str(&format!(
+        r##"<line x1=\"{x:.2}\" y1=\"{y1:.2}\" x2=\"{x:.2}\" y2=\"{y2:.2}\" stroke=\"#000\" stroke-width=\"1\" />"##,
+        x = axis_left,
+        y1 = axis_top,
+        y2 = axis_bottom
+    ));
+    for tick in &ticks {
+        let y = scale_value(*tick, min_v, max_v, height);
+        let stroke = if tick.abs() < 1e-9 { "#000" } else { "#eeeeee" };
+        svg.push_str(&format!(
+            r##"<line x1=\"{x1:.2}\" y1=\"{y:.2}\" x2=\"{x2:.2}\" y2=\"{y:.2}\" stroke=\"{stroke}\" stroke-width=\"1\" />"##,
+            x1 = axis_left,
+            x2 = axis_right,
+            y = y,
+            stroke = stroke
+        ));
+        svg.push_str(&format!(
+            r##"<line x1=\"{x1:.2}\" y1=\"{y:.2}\" x2=\"{x2:.2}\" y2=\"{y:.2}\" stroke=\"#000\" stroke-width=\"1\" />"##,
+            x1 = axis_left - 4.0,
+            x2 = axis_left,
+            y = y
+        ));
+        svg.push_str(&format!(
+            r##"<text x=\"{x:.2}\" y=\"{y:.2}\" text-anchor=\"end\" fill=\"#333\">{label}</text>"##,
+            x = axis_left - 6.0,
+            y = y - 2.0,
+            label = format_percentage(*tick)
+        ));
+    }
 
     for guide in guides {
         let y = scale_value(guide.value, min_v, max_v, height);
@@ -250,10 +315,17 @@ fn render_indexed_line_chart(
         }
         let mut coords = Vec::with_capacity(series.points.len());
         for (idx, value) in &series.points {
-            if *idx >= axis_xs.len() || !value.is_finite() {
+            if !value.is_finite() {
                 continue;
             }
-            coords.push((axis_xs[*idx], scale_value(*value, min_v, max_v, height)));
+            if *idx < min_idx || *idx > max_idx {
+                continue;
+            }
+            let rel_idx = idx.saturating_sub(min_idx);
+            if rel_idx >= axis_xs.len() {
+                continue;
+            }
+            coords.push((axis_xs[rel_idx], scale_value(*value, min_v, max_v, height)));
         }
         if coords.is_empty() {
             continue;
@@ -281,7 +353,7 @@ fn render_indexed_line_chart(
         }
     }
 
-    add_time_axis(&mut svg, dates, &axis_xs, width, height, None);
+    add_time_axis(&mut svg, range_dates, &axis_xs, width, height, None);
 
     if show_legend && !legend_entries.is_empty() {
         draw_line_legend(&mut svg, &legend_entries, width);
