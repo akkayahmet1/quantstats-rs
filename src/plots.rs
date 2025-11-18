@@ -502,12 +502,40 @@ fn add_time_axis(
     // Limit number of visible labels to keep things readable.
     let max_labels = 8usize;
     let total_months = month_starts.len();
-    let label_step = if total_months <= max_labels {
+    let base_step = if total_months <= max_labels {
         1
     } else {
         ((total_months as f64) / (max_labels as f64)).ceil() as usize
     }
     .max(1);
+
+    // First choose candidate label positions (by index).
+    let mut candidate = vec![false; total_months];
+    for i in 0..total_months {
+        let is_edge = i == 0 || i + 1 == total_months;
+        let is_step = i % base_step == 0;
+        candidate[i] = is_edge || is_step;
+    }
+
+    // Then enforce a minimum pixel spacing between labels,
+    // preferring to keep those closer to the right edge.
+    let mut selected = vec![false; total_months];
+    let mut last_x: Option<f64> = None;
+    let min_spacing = 40.0_f64; // pixels
+    for i in (0..total_months).rev() {
+        if !candidate[i] {
+            continue;
+        }
+        let (idx, _) = month_starts[i];
+        let x = xs[idx];
+        if let Some(prev_x) = last_x {
+            if (prev_x - x).abs() < min_spacing {
+                continue;
+            }
+        }
+        selected[i] = true;
+        last_x = Some(x);
+    }
 
     for (i, (idx, date)) in month_starts.iter().enumerate() {
         let x = xs[*idx];
@@ -520,10 +548,7 @@ fn add_time_axis(
             y2 = height - PADDING
         ));
 
-        // Decide whether to show label for this month
-        let is_edge = i == 0 || i + 1 == total_months;
-        let show_label = is_edge || (i % label_step == 0);
-        if !show_label {
+        if !selected[i] {
             continue;
         }
 
