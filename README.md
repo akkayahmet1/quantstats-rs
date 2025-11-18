@@ -11,6 +11,10 @@ The repository also includes pre-generated example reports:
 
 You can open these directly in a browser to see what the library produces.
 
+Preview of the benchmark tear sheet:
+
+![Quantstats-rs demo tear sheet with benchmark](tearsheet_with_benchmark.png)
+
 ## Features
 
 - Generate full HTML tear sheets from:

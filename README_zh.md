@@ -3,6 +3,10 @@
 Rust 版本的 [QuantStats](https://github.com/ranaroussi/quantstats) 风格绩效报表库，用于从收益率时间序列生成 HTML tear sheet。
 本仓库以 Python QuantStats的实现和输出为对照，尽量在数值和图表上做到一一对应。
 
+基准 Tearsheet 预览：
+
+![Quantstats-rs 示例 Tearsheet（含基准）](tearsheet_with_benchmark.png)
+
 ## 功能概览
 
 - 从单条策略或“策略 + 基准”收益序列生成完整 HTML 报告：
@@ -55,11 +59,11 @@ cargo run --example html_with_benchmark
 cargo test
 ```
 
-生成的 HTML 可以直接用浏览器打开，与 Python 版 QuantStats 输出进行肉眼对比。  
+生成的 HTML 可以直接用浏览器打开，与 Python 版 QuantStats 输出进行肉眼对比。
 仓库根目录已附带示例报告：
 
-- <a href="tearsheet.html" title="策略示例 Tearsheet">tearsheet.html</a>（仅策略）  
-- <a href="tearsheet_with_benchmark.html" title="策略 vs 基准 Tearsheet">tearsheet_with_benchmark.html</a>（策略 + 基准）  
+- <a href="tearsheet.html" title="策略示例 Tearsheet">tearsheet.html</a>（仅策略）
+- <a href="tearsheet_with_benchmark.html" title="策略 vs 基准 Tearsheet">tearsheet_with_benchmark.html</a>（策略 + 基准）
 
 ## 作为库使用
 
