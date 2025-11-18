@@ -755,15 +755,9 @@ fn draw_line_chart(dates: &[NaiveDate], values: &[f64], title: &str) -> String {
     }
     svg.push_str(&polyline(&points, "#348dc1"));
 
-    // Time axis at the bottom:
-    // - For daily returns, draw a dashed black baseline to emphasize the x-axis.
-    // - For other charts (e.g., underwater), only show ticks + labels (no baseline).
-    let (draw_axis, dashed_axis) = if title == "Daily Returns (Cumulative Sum)" {
-        (true, true)
-    } else {
-        (false, false)
-    };
-    add_time_axis(&mut svg, dates, &xs, width, height, None, draw_axis, dashed_axis);
+    // Time axis at the bottom: only draw ticks + labels (no baseline).
+    // The 0% level (when applicable) is highlighted separately above.
+    add_time_axis(&mut svg, dates, &xs, width, height, None, false, false);
 
     svg.push_str(svg_footer());
     wrap_plot(title, svg)
@@ -1589,9 +1583,181 @@ pub fn drawdown(returns: &ReturnSeries) -> String {
 
     // Compute underwater series (relative drawdown) as percentages.
     let drawdowns = compute_drawdown(returns);
-    // Use the existing line chart helper, which already formats
-    // the y-axis as percentages and adds time-axis labels.
-    draw_line_chart(&returns.dates, &drawdowns, "Drawdown (Underwater)")
+
+    let width = WIDTH as f64;
+    let height = HEIGHT as f64;
+    let xs = x_positions(drawdowns.len(), width);
+    if xs.is_empty() {
+        return String::new();
+    }
+
+    // Determine value range, ensuring 0 is included at the top.
+    let mut min_v = drawdowns
+        .iter()
+        .copied()
+        .filter(|v| v.is_finite())
+        .fold(f64::INFINITY, f64::min);
+    let mut max_v = drawdowns
+        .iter()
+        .copied()
+        .filter(|v| v.is_finite())
+        .fold(f64::NEG_INFINITY, f64::max);
+    if !min_v.is_finite() || !max_v.is_finite() {
+        min_v = -0.5;
+        max_v = 0.0;
+    }
+    if max_v < 0.0 {
+        max_v = 0.0;
+    }
+    if min_v > 0.0 {
+        min_v = 0.0;
+    }
+    if (max_v - min_v).abs() < f64::EPSILON {
+        max_v += 0.1;
+        min_v -= 0.1;
+    }
+
+    let ticks = generate_ticks(min_v, max_v);
+    if ticks.len() < 2 {
+        return String::new();
+    }
+    let tick_min = *ticks.first().unwrap();
+    let tick_max = *ticks.last().unwrap();
+    let span = (tick_max - tick_min).max(1e-9);
+
+    let inner_height = height - 2.0 * PADDING;
+    let value_to_y = |value: f64| {
+        let norm = (value - tick_min) / span;
+        PADDING + (1.0 - norm) * inner_height
+    };
+
+    let mut svg = String::new();
+    svg.push_str(&svg_header(WIDTH, HEIGHT));
+
+    // y-axis with horizontal grid and labels (percent)
+    let axis_left = PADDING;
+    let axis_top = PADDING;
+    let axis_bottom = height - PADDING;
+    svg.push_str(&format!(
+        r##"<line x1="{x:.2}" y1="{y1:.2}" x2="{x:.2}" y2="{y2:.2}" stroke="#000" stroke-width="1" />"##,
+        x = axis_left,
+        y1 = axis_top,
+        y2 = axis_bottom
+    ));
+
+    for tick in &ticks {
+        let mut y = value_to_y(*tick);
+        if y < axis_top {
+            y = axis_top;
+        } else if y > axis_bottom {
+            y = axis_bottom;
+        }
+        let stroke = "#eeeeee";
+        svg.push_str(&format!(
+            r##"<line x1="{x1:.2}" y1="{y:.2}" x2="{x2:.2}" y2="{y:.2}" stroke="{stroke}" stroke-width="1" />"##,
+            x1 = axis_left,
+            x2 = width - PADDING,
+            y = y,
+            stroke = stroke
+        ));
+        svg.push_str(&format!(
+            r##"<line x1="{x1:.2}" y1="{y:.2}" x2="{x2:.2}" y2="{y:.2}" stroke="#000" stroke-width="1" />"##,
+            x1 = axis_left - 4.0,
+            x2 = axis_left,
+            y = y
+        ));
+        svg.push_str(&format!(
+            r##"<text x="{x:.2}" y="{y:.2}" text-anchor="end" fill="#333">{label}</text>"##,
+            x = axis_left - 6.0,
+            y = y - 2.0,
+            label = format_percentage(*tick)
+        ));
+    }
+
+    // Fill area between 0% and the underwater curve (drawdowns are <= 0).
+    let zero_y = value_to_y(0.0);
+    if !xs.is_empty() {
+        let mut d = String::new();
+        d.push_str(&format!("M {:.2},{:.2} ", xs[0], zero_y));
+        for (i, x) in xs.iter().enumerate() {
+            let v = drawdowns[i];
+            if !v.is_finite() {
+                continue;
+            }
+            let y = value_to_y(v);
+            d.push_str(&format!("L {:.2},{:.2} ", x, y));
+        }
+        if let Some(last_x) = xs.last() {
+            d.push_str(&format!("L {:.2},{:.2} Z", last_x, zero_y));
+        }
+        svg.push_str(&format!(
+            r#"<path d="{d}" fill="{color}" fill-opacity="0.25" stroke="none" />"#,
+            d = d,
+            color = STRATEGY_COLOR
+        ));
+    }
+
+    // Draw underwater line (solid).
+    let mut points = Vec::new();
+    for (i, x) in xs.iter().enumerate() {
+        let v = drawdowns[i];
+        if !v.is_finite() {
+            continue;
+        }
+        points.push((*x, value_to_y(v)));
+    }
+    if !points.is_empty() {
+        svg.push_str(&format!(
+            r#"<polyline fill="none" stroke="{color}" stroke-width="1.5" points="{points}" />"#,
+            color = STRATEGY_COLOR,
+            points = points
+                .iter()
+                .map(|(x, y)| format!("{x:.2},{y:.2}"))
+                .collect::<Vec<_>>()
+                .join(" ")
+        ));
+    }
+
+    // Red dashed mean line of drawdowns.
+    let mut sum = 0.0;
+    let mut count = 0usize;
+    for v in &drawdowns {
+        if v.is_finite() {
+            sum += *v;
+            count += 1;
+        }
+    }
+    if count > 0 {
+        let mean = sum / count as f64;
+        let mut y = value_to_y(mean);
+        if y < axis_top {
+            y = axis_top;
+        } else if y > axis_bottom {
+            y = axis_bottom;
+        }
+        svg.push_str(&format!(
+            r##"<line x1="{x1:.2}" y1="{y:.2}" x2="{x2:.2}" y2="{y:.2}" stroke="{color}" stroke-width="1" stroke-dasharray="4 3" />"##,
+            x1 = axis_left,
+            x2 = width - PADDING,
+            y = y,
+            color = MEAN_GUIDE_COLOR
+        ));
+    }
+
+    // Time axis at bottom: ticks + labels only.
+    add_time_axis(
+        &mut svg,
+        &returns.dates,
+        &xs,
+        width,
+        height,
+        None,
+        false,
+        false,
+    );
+
+    svg.push_str(svg_footer());
+    wrap_plot("Drawdown (Underwater)", svg)
 }
 
 pub fn drawdown_periods(returns: &ReturnSeries) -> String {
