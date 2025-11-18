@@ -2413,7 +2413,7 @@ pub fn rolling_volatility(
                     label: Some(resolve_label(bench, "Benchmark")),
                     color: BENCHMARK_COLOR,
                     stroke_width: 1.4,
-                    dash: true,
+                    dash: false,
                     points: bench_points,
                 });
             }
