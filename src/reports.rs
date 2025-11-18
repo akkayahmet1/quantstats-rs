@@ -201,9 +201,11 @@ pub fn html<'a>(
         plots::rolling_sortino(&prepared_returns, options.rf, options.periods_per_year);
     tpl = tpl.replace("{{rolling_sortino}}", &rolling_sortino_svg);
 
-    let dd_periods_svg = plots::drawdown(&prepared_returns);
+    // Worst drawdown periods highlight plot
+    let dd_periods_svg = plots::drawdown_periods(&prepared_returns);
     tpl = tpl.replace("{{dd_periods}}", &dd_periods_svg);
 
+    // Underwater drawdown curve
     let dd_plot_svg = plots::drawdown(&prepared_returns);
     tpl = tpl.replace("{{dd_plot}}", &dd_plot_svg);
 
