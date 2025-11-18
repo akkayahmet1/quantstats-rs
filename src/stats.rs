@@ -38,12 +38,11 @@ pub fn compute_performance_metrics(
     // Use detailed drawdown analysis for max drawdown stats
     // and longest drawdown duration (may be a different period).
     let dd_segments = top_drawdowns(returns, 1);
-    let (max_drawdown, max_start, max_trough, max_end) =
-        if let Some(dd) = dd_segments.first() {
-            (dd.depth, Some(dd.start), Some(dd.trough), Some(dd.end))
-        } else {
-            (0.0, None, None, None)
-        };
+    let (max_drawdown, max_start, max_trough, max_end) = if let Some(dd) = dd_segments.first() {
+        (dd.depth, Some(dd.start), Some(dd.trough), Some(dd.end))
+    } else {
+        (0.0, None, None, None)
+    };
 
     let all_dd_segments = all_drawdowns(returns);
     let max_duration = all_dd_segments
@@ -102,11 +101,7 @@ fn compounded_return(returns: &[f64]) -> f64 {
 }
 
 fn annualized_volatility(returns: &[f64], periods_per_year: u32) -> f64 {
-    let clean: Vec<f64> = returns
-        .iter()
-        .copied()
-        .filter(|v| v.is_finite())
-        .collect();
+    let clean: Vec<f64> = returns.iter().copied().filter(|v| v.is_finite()).collect();
 
     if clean.len() < 2 {
         return 0.0;
@@ -150,11 +145,7 @@ fn best_and_worst(returns: &[f64]) -> (f64, f64) {
 }
 
 fn sharpe_from_values(returns: &[f64], rf: f64, periods_per_year: u32) -> f64 {
-    let vals: Vec<f64> = returns
-        .iter()
-        .copied()
-        .filter(|v| v.is_finite())
-        .collect();
+    let vals: Vec<f64> = returns.iter().copied().filter(|v| v.is_finite()).collect();
 
     if vals.len() < 2 {
         return 0.0;
@@ -209,7 +200,11 @@ pub fn top_drawdowns(returns: &ReturnSeries, top_n: usize) -> Vec<Drawdown> {
     let mut segments = compute_drawdown_segments(returns);
 
     // Sort by depth (most negative first) and take top_n
-    segments.sort_by(|a, b| a.depth.partial_cmp(&b.depth).unwrap_or(std::cmp::Ordering::Equal));
+    segments.sort_by(|a, b| {
+        a.depth
+            .partial_cmp(&b.depth)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     segments.truncate(top_n);
 
     segments
@@ -269,10 +264,7 @@ pub fn cvar(returns: &ReturnSeries, sigma: f64, confidence: f64) -> f64 {
     }
 
     let var_threshold = var_normal(returns, sigma, confidence);
-    let tail: Vec<f64> = vals
-        .into_iter()
-        .filter(|v| *v < var_threshold)
-        .collect();
+    let tail: Vec<f64> = vals.into_iter().filter(|v| *v < var_threshold).collect();
 
     if tail.is_empty() {
         var_threshold
@@ -313,8 +305,7 @@ pub fn kelly(returns: &ReturnSeries) -> f64 {
     if non_zero.is_empty() {
         return 0.0;
     }
-    let win_prob =
-        non_zero.iter().filter(|v| **v > 0.0).count() as f64 / non_zero.len() as f64;
+    let win_prob = non_zero.iter().filter(|v| **v > 0.0).count() as f64 / non_zero.len() as f64;
     let lose_prob = 1.0 - win_prob;
 
     if win_loss_ratio == 0.0 {
@@ -342,8 +333,7 @@ pub fn risk_of_ruin(returns: &ReturnSeries) -> f64 {
     if non_zero.is_empty() {
         return 0.0;
     }
-    let win_prob =
-        non_zero.iter().filter(|v| **v > 0.0).count() as f64 / non_zero.len() as f64;
+    let win_prob = non_zero.iter().filter(|v| **v > 0.0).count() as f64 / non_zero.len() as f64;
 
     if win_prob <= 0.0 {
         return 1.0;
@@ -386,9 +376,7 @@ fn erf(x: f64) -> f64 {
     let x = x.abs();
     let t = 1.0 / (1.0 + 0.3275911 * x);
     let y = 1.0
-        - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t
-            - 0.284496736)
-            * t
+        - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t
             + 0.254829592)
             * t
             * (-x * x).exp();

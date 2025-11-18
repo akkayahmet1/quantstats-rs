@@ -1,6 +1,6 @@
 mod common;
 
-use quantstats_rs::{html, HtmlReportOptions};
+use quantstats_rs::{HtmlReportOptions, html};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Use shared demo data from examples/common.rs (generated from data file)

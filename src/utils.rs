@@ -77,10 +77,7 @@ impl ReturnSeries {
     }
 }
 
-pub fn align_start_dates(
-    a: &ReturnSeries,
-    b: &ReturnSeries,
-) -> (ReturnSeries, ReturnSeries) {
+pub fn align_start_dates(a: &ReturnSeries, b: &ReturnSeries) -> (ReturnSeries, ReturnSeries) {
     let idx_a = first_non_zero_index(&a.values).unwrap_or(0);
     let idx_b = first_non_zero_index(&b.values).unwrap_or(0);
     let start_idx = idx_a.max(idx_b);
@@ -101,8 +98,5 @@ pub fn align_start_dates(
 }
 
 fn first_non_zero_index(values: &[f64]) -> Option<usize> {
-    values
-        .iter()
-        .position(|v| !v.is_nan() && *v != 0.0)
+    values.iter().position(|v| !v.is_nan() && *v != 0.0)
 }
-

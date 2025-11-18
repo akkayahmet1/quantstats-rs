@@ -3,8 +3,8 @@ use std::path::{Path, PathBuf};
 use chrono::Datelike;
 
 use crate::plots;
-use crate::stats::{compute_performance_metrics, top_drawdowns, Drawdown, PerformanceMetrics};
-use crate::utils::{align_start_dates, DataError, ReturnSeries};
+use crate::stats::{Drawdown, PerformanceMetrics, compute_performance_metrics, top_drawdowns};
+use crate::utils::{DataError, ReturnSeries, align_start_dates};
 
 const DEFAULT_TITLE: &str = "Strategy Tearsheet";
 const DEFAULT_PERIODS_PER_YEAR: u32 = 252;
@@ -123,7 +123,8 @@ pub fn html<'a>(
         (None, _) => (returns.clone(), None),
     };
 
-    let metrics = compute_performance_metrics(&prepared_returns, options.rf, options.periods_per_year);
+    let metrics =
+        compute_performance_metrics(&prepared_returns, options.rf, options.periods_per_year);
     let benchmark_metrics = prepared_benchmark
         .as_ref()
         .map(|b| compute_performance_metrics(b, options.rf, options.periods_per_year));
@@ -155,10 +156,7 @@ pub fn html<'a>(
         &prepared_returns,
         prepared_benchmark.as_ref(),
         options.strategy_title.as_deref().unwrap_or("Strategy"),
-        options
-            .benchmark_title
-            .as_deref()
-            .unwrap_or("Benchmark"),
+        options.benchmark_title.as_deref().unwrap_or("Benchmark"),
         options.rf,
         options.periods_per_year,
     );
@@ -315,10 +313,7 @@ fn build_metrics_table(
     let exp_s = crate::stats::exposure(strategy_returns);
     html.push_str(&format!("<td>{:.1}%</td></tr>", exp_s * 100.0));
 
-    html.push_str(&format!(
-        r#"<tr><td colspan="{}"><hr></td></tr>"#,
-        colspan
-    ));
+    html.push_str(&format!(r#"<tr><td colspan="{}"><hr></td></tr>"#, colspan));
 
     // Cumulative / annualized returns
     let bench_total = benchmark.map(|b| b.total_return * 100.0);
@@ -341,10 +336,7 @@ fn build_metrics_table(
         strategy.annualized_return * 100.0
     ));
 
-    html.push_str(&format!(
-        r#"<tr><td colspan="{}"><hr></td></tr>"#,
-        colspan
-    ));
+    html.push_str(&format!(r#"<tr><td colspan="{}"><hr></td></tr>"#, colspan));
 
     // Sharpe-like ratios
     html.push_str("<tr><td>Sharpe</td>");
@@ -358,9 +350,7 @@ fn build_metrics_table(
         if n <= 1.0 {
             return 0.0;
         }
-        let numerator = 1.0
-            + (0.5 * base_sr * base_sr)
-            - (skew * base_sr)
+        let numerator = 1.0 + (0.5 * base_sr * base_sr) - (skew * base_sr)
             + (((kurt - 3.0) / 4.0) * base_sr * base_sr);
         let sigma_sr = (numerator / (n - 1.0)).sqrt();
         if sigma_sr == 0.0 {
@@ -377,9 +367,7 @@ fn build_metrics_table(
         let x = x.abs();
         let t = 1.0 / (1.0 + 0.3275911 * x);
         let y = 1.0
-            - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t
-                - 0.284496736)
-                * t
+            - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t
                 + 0.254829592)
                 * t
                 * (-x * x).exp();
@@ -451,10 +439,7 @@ fn build_metrics_table(
     } else if benchmark.is_some() {
         html.push_str("<td>-</td>");
     }
-    html.push_str(&format!(
-        "<td>{:.2}</td></tr>",
-        s_sortino / 2.0_f64.sqrt()
-    ));
+    html.push_str(&format!("<td>{:.2}</td></tr>", s_sortino / 2.0_f64.sqrt()));
 
     html.push_str("<tr><td>Smart Sortino/√2</td>");
     if let Some(v) = b_sortino {
@@ -462,16 +447,11 @@ fn build_metrics_table(
     } else if benchmark.is_some() {
         html.push_str("<td>-</td>");
     }
-    html.push_str(&format!(
-        "<td>{:.2}</td></tr>",
-        s_sortino / 2.0_f64.sqrt()
-    ));
+    html.push_str(&format!("<td>{:.2}</td></tr>", s_sortino / 2.0_f64.sqrt()));
 
     // Omega
     let omega_strat = omega_ratio(&strat_vals, 0.0);
-    let omega_bench = bench_vals
-        .as_ref()
-        .map(|v| omega_ratio(v, 0.0));
+    let omega_bench = bench_vals.as_ref().map(|v| omega_ratio(v, 0.0));
 
     html.push_str("<tr><td>Omega</td>");
     if let Some(v) = omega_bench {
@@ -481,10 +461,7 @@ fn build_metrics_table(
     }
     html.push_str(&format!("<td>{:.2}</td></tr>", omega_strat));
 
-    html.push_str(&format!(
-        r#"<tr><td colspan="{}"><hr></td></tr>"#,
-        colspan
-    ));
+    html.push_str(&format!(r#"<tr><td colspan="{}"><hr></td></tr>"#, colspan));
 
     // Drawdown information
     html.push_str("<tr><td>Max Drawdown</td>");
@@ -506,10 +483,7 @@ fn build_metrics_table(
 
     html.push_str("<tr><td>Max DD Date</td>");
     if let Some(b) = benchmark {
-        html.push_str(&format!(
-            "<td>{}</td>",
-            fmt_date(b.max_drawdown_trough)
-        ));
+        html.push_str(&format!("<td>{}</td>", fmt_date(b.max_drawdown_trough)));
     } else if benchmark.is_some() {
         html.push_str("<td>-</td>");
     }
@@ -520,10 +494,7 @@ fn build_metrics_table(
 
     html.push_str("<tr><td>Max DD Period Start</td>");
     if let Some(b) = benchmark {
-        html.push_str(&format!(
-            "<td>{}</td>",
-            fmt_date(b.max_drawdown_start)
-        ));
+        html.push_str(&format!("<td>{}</td>", fmt_date(b.max_drawdown_start)));
     } else if benchmark.is_some() {
         html.push_str("<td>-</td>");
     }
@@ -534,10 +505,7 @@ fn build_metrics_table(
 
     html.push_str("<tr><td>Max DD Period End</td>");
     if let Some(b) = benchmark {
-        html.push_str(&format!(
-            "<td>{}</td>",
-            fmt_date(b.max_drawdown_end)
-        ));
+        html.push_str(&format!("<td>{}</td>", fmt_date(b.max_drawdown_end)));
     } else if benchmark.is_some() {
         html.push_str("<td>-</td>");
     }
@@ -553,18 +521,12 @@ fn build_metrics_table(
     } else if benchmark.is_some() {
         html.push_str("<td>-</td>");
     }
-    html.push_str(&format!(
-        "<td>{}</td></tr>",
-        strategy.max_drawdown_duration
-    ));
+    html.push_str(&format!("<td>{}</td></tr>", strategy.max_drawdown_duration));
 
     // Volatility (ann.), R^2, Information Ratio, Calmar, Skew, Kurtosis
     html.push_str("<tr><td>Volatility (ann.)</td>");
     if let Some(b) = benchmark {
-        html.push_str(&format!(
-            "<td>{:.2}%</td>",
-            b.annualized_volatility * 100.0
-        ));
+        html.push_str(&format!("<td>{:.2}%</td>", b.annualized_volatility * 100.0));
     } else if benchmark.is_some() {
         html.push_str("<td>-</td>");
     }
@@ -574,20 +536,19 @@ fn build_metrics_table(
     ));
 
     // Regression vs benchmark if available
-    let (r2, info_ratio, beta, alpha_ann, corr, treynor) = if let (Some(_bm), Some(b_vals)) =
-        (benchmark_returns, bench_vals.as_ref())
-    {
-        regression_metrics(
-            &strat_vals,
-            b_vals,
-            strategy.total_return,
-            rf,
-            periods_per_year,
-        )
-        .unwrap_or((0.0, 0.0, 0.0, 0.0, 0.0, 0.0))
-    } else {
-        (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
-    };
+    let (r2, info_ratio, beta, alpha_ann, corr, treynor) =
+        if let (Some(_bm), Some(b_vals)) = (benchmark_returns, bench_vals.as_ref()) {
+            regression_metrics(
+                &strat_vals,
+                b_vals,
+                strategy.total_return,
+                rf,
+                periods_per_year,
+            )
+            .unwrap_or((0.0, 0.0, 0.0, 0.0, 0.0, 0.0))
+        } else {
+            (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+        };
 
     html.push_str("<tr><td>R^2</td>");
     if benchmark.is_some() {
@@ -639,10 +600,7 @@ fn build_metrics_table(
     }
     html.push_str(&format!("<td>{:.2}</td></tr>", s_kurt));
 
-    html.push_str(&format!(
-        r#"<tr><td colspan="{}"><hr></td></tr>"#,
-        colspan
-    ));
+    html.push_str(&format!(r#"<tr><td colspan="{}"><hr></td></tr>"#, colspan));
 
     // Expected returns
     // Expected daily/monthly/yearly use geometric mean of aggregated
@@ -652,9 +610,7 @@ fn build_metrics_table(
         if values.is_empty() {
             return 0.0;
         }
-        let prod = values
-            .iter()
-            .fold(1.0_f64, |acc, r| acc * (1.0 + *r));
+        let prod = values.iter().fold(1.0_f64, |acc, r| acc * (1.0 + *r));
         prod.powf(1.0 / values.len() as f64) - 1.0
     }
 
@@ -683,19 +639,12 @@ fn build_metrics_table(
     } else if benchmark.is_some() {
         html.push_str("<td>-</td>");
     }
-    html.push_str(&format!(
-        "<td>{:.2}%</td></tr>",
-        exp_monthly_strat * 100.0
-    ));
+    html.push_str(&format!("<td>{:.2}%</td></tr>", exp_monthly_strat * 100.0));
 
     // Expected Yearly: geometric mean of yearly compounded returns
     let strat_yearly_for_exp = yearly_compounded(strategy_returns);
-    let exp_yearly_strat = expected_return(
-        &strat_yearly_for_exp
-            .values()
-            .copied()
-            .collect::<Vec<_>>(),
-    );
+    let exp_yearly_strat =
+        expected_return(&strat_yearly_for_exp.values().copied().collect::<Vec<_>>());
     let exp_yearly_bench = benchmark_returns.map(|b| {
         let y = yearly_compounded(b);
         expected_return(&y.values().copied().collect::<Vec<_>>())
@@ -707,10 +656,7 @@ fn build_metrics_table(
     } else if benchmark.is_some() {
         html.push_str("<td>-</td>");
     }
-    html.push_str(&format!(
-        "<td>{:.2}%</td></tr>",
-        exp_yearly_strat * 100.0
-    ));
+    html.push_str(&format!("<td>{:.2}%</td></tr>", exp_yearly_strat * 100.0));
 
     // Kelly criterion
     let kelly_strat = crate::stats::kelly(strategy_returns);
@@ -722,10 +668,7 @@ fn build_metrics_table(
     } else if benchmark.is_some() {
         html.push_str("<td>-</td>");
     }
-    html.push_str(&format!(
-        "<td>{:.2}%</td></tr>",
-        kelly_strat * 100.0
-    ));
+    html.push_str(&format!("<td>{:.2}%</td></tr>", kelly_strat * 100.0));
 
     // Risk of Ruin
     let ror_strat = crate::stats::risk_of_ruin(strategy_returns);
@@ -737,10 +680,7 @@ fn build_metrics_table(
     } else if benchmark.is_some() {
         html.push_str("<td>-</td>");
     }
-    html.push_str(&format!(
-        "<td>{:.2}%</td></tr>",
-        ror_strat * 100.0
-    ));
+    html.push_str(&format!("<td>{:.2}%</td></tr>", ror_strat * 100.0));
 
     // VaR and cVaR (ES). QuantStats' HTML sample for this dataset shows
     // CVaR equal to VaR, so we mirror that behaviour here.
@@ -755,10 +695,7 @@ fn build_metrics_table(
     } else if benchmark.is_some() {
         html.push_str("<td>-</td>");
     }
-    html.push_str(&format!(
-        "<td>{:.2}%</td></tr>",
-        var_strat * 100.0
-    ));
+    html.push_str(&format!("<td>{:.2}%</td></tr>", var_strat * 100.0));
 
     html.push_str("<tr><td>Expected Shortfall (cVaR)</td>");
     if let Some(v) = cvar_bench {
@@ -766,23 +703,17 @@ fn build_metrics_table(
     } else if benchmark.is_some() {
         html.push_str("<td>-</td>");
     }
-    html.push_str(&format!(
-        "<td>{:.2}%</td></tr>",
-        cvar_strat * 100.0
-    ));
+    html.push_str(&format!("<td>{:.2}%</td></tr>", cvar_strat * 100.0));
 
-    html.push_str(&format!(
-        r#"<tr><td colspan="{}"><hr></td></tr>"#,
-        colspan
-    ));
+    html.push_str(&format!(r#"<tr><td colspan="{}"><hr></td></tr>"#, colspan));
 
     // Consecutive wins/losses and gain/pain
     let max_wins_strat = max_consecutive_streak(&strat_vals, true);
     let max_losses_strat = max_consecutive_streak(&strat_vals, false);
-    let max_wins_bench =
-        bench_vals.as_ref().map(|v| max_consecutive_streak(v, true));
-    let max_losses_bench =
-        bench_vals.as_ref().map(|v| max_consecutive_streak(v, false));
+    let max_wins_bench = bench_vals.as_ref().map(|v| max_consecutive_streak(v, true));
+    let max_losses_bench = bench_vals
+        .as_ref()
+        .map(|v| max_consecutive_streak(v, false));
 
     html.push_str("<tr><td>Max Consecutive Wins</td>");
     if let Some(v) = max_wins_bench {
@@ -798,10 +729,7 @@ fn build_metrics_table(
     } else if benchmark.is_some() {
         html.push_str("<td>-</td>");
     }
-    html.push_str(&format!(
-        "<td>{}</td></tr>",
-        max_losses_strat
-    ));
+    html.push_str(&format!("<td>{}</td></tr>", max_losses_strat));
 
     let gp_strat = gain_to_pain(&strat_vals);
     let gp_bench = bench_vals.as_ref().map(|v| gain_to_pain(v));
@@ -866,10 +794,7 @@ fn build_metrics_table(
         html.push_str("<td>-</td></tr>");
     }
 
-    html.push_str(&format!(
-        r#"<tr><td colspan="{}"><hr></td></tr>"#,
-        colspan
-    ));
+    html.push_str(&format!(r#"<tr><td colspan="{}"><hr></td></tr>"#, colspan));
 
     // Payoff / profit factor / tail metrics
     let payoff_strat = payoff_ratio(&strat_vals);
@@ -895,8 +820,9 @@ fn build_metrics_table(
     let tail_strat = tail_ratio(&strat_vals);
     let tail_bench = bench_vals.as_ref().map(|v| tail_ratio(v));
     let csr_strat = common_sense_ratio_from_values(&strat_vals);
-    let csr_bench =
-        bench_vals.as_ref().map(|v| common_sense_ratio_from_values(v));
+    let csr_bench = bench_vals
+        .as_ref()
+        .map(|v| common_sense_ratio_from_values(v));
 
     html.push_str("<tr><td>Common Sense Ratio</td>");
     if let Some(v) = csr_bench {
@@ -916,8 +842,7 @@ fn build_metrics_table(
     html.push_str(&format!("<td>{:.2}</td></tr>", tail_strat));
 
     let cpc_strat = cpc_index_from_values(&strat_vals);
-    let cpc_bench =
-        bench_vals.as_ref().map(|v| cpc_index_from_values(v));
+    let cpc_bench = bench_vals.as_ref().map(|v| cpc_index_from_values(v));
 
     html.push_str("<tr><td>CPC Index</td>");
     if let Some(v) = cpc_bench {
@@ -949,16 +874,10 @@ fn build_metrics_table(
     }
     html.push_str(&format!("<td>{:.2}</td></tr>", ol_strat));
 
-    html.push_str(&format!(
-        r#"<tr><td colspan="{}"><hr></td></tr>"#,
-        colspan
-    ));
+    html.push_str(&format!(r#"<tr><td colspan="{}"><hr></td></tr>"#, colspan));
 
     // Simple period aggregates: MTD / 3M / 6M / YTD / 1Y / 3Y / 5Y / 10Y / All-time
-    fn period_return_from(
-        series: &ReturnSeries,
-        from_date: chrono::NaiveDate,
-    ) -> f64 {
+    fn period_return_from(series: &ReturnSeries, from_date: chrono::NaiveDate) -> f64 {
         let mut prod = 1.0_f64;
         for (d, r) in series.dates.iter().zip(series.values.iter()) {
             if *d >= from_date && r.is_finite() {
@@ -974,17 +893,15 @@ fn build_metrics_table(
         .copied()
         .unwrap_or_else(|| chrono::NaiveDate::from_ymd_opt(1970, 1, 1).unwrap());
 
-    let mtd_start =
-        chrono::NaiveDate::from_ymd_opt(last_date.year(), last_date.month(), 1)
-            .unwrap_or(last_date);
+    let mtd_start = chrono::NaiveDate::from_ymd_opt(last_date.year(), last_date.month(), 1)
+        .unwrap_or(last_date);
     let m3_start = last_date
         .checked_sub_months(chrono::Months::new(3))
         .unwrap_or(mtd_start);
     let m6_start = last_date
         .checked_sub_months(chrono::Months::new(6))
         .unwrap_or(mtd_start);
-    let ytd_start =
-        chrono::NaiveDate::from_ymd_opt(last_date.year(), 1, 1).unwrap_or(last_date);
+    let ytd_start = chrono::NaiveDate::from_ymd_opt(last_date.year(), 1, 1).unwrap_or(last_date);
     let y1_start = last_date
         .checked_sub_months(chrono::Months::new(12))
         .unwrap_or(ytd_start);
@@ -995,18 +912,17 @@ fn build_metrics_table(
     let ytd_strat = period_return_from(strategy_returns, ytd_start);
     let y1_strat = period_return_from(strategy_returns, y1_start);
 
-    let (mtd_bench, m3_bench, m6_bench, ytd_bench, y1_bench) =
-        if let Some(bm) = benchmark_returns {
-            (
-                period_return_from(bm, mtd_start),
-                period_return_from(bm, m3_start),
-                period_return_from(bm, m6_start),
-                period_return_from(bm, ytd_start),
-                period_return_from(bm, y1_start),
-            )
-        } else {
-            (0.0, 0.0, 0.0, 0.0, 0.0)
-        };
+    let (mtd_bench, m3_bench, m6_bench, ytd_bench, y1_bench) = if let Some(bm) = benchmark_returns {
+        (
+            period_return_from(bm, mtd_start),
+            period_return_from(bm, m3_start),
+            period_return_from(bm, m6_start),
+            period_return_from(bm, ytd_start),
+            period_return_from(bm, y1_start),
+        )
+    } else {
+        (0.0, 0.0, 0.0, 0.0, 0.0)
+    };
 
     html.push_str("<tr><td>MTD</td>");
     if benchmark.is_some() {
@@ -1030,10 +946,7 @@ fn build_metrics_table(
     if benchmark.is_some() {
         html.push_str(&format!("<td>{:.2}%</td>", ytd_bench * 100.0));
     }
-    html.push_str(&format!(
-        "<td>{:.2}%</td></tr>",
-        ytd_strat * 100.0
-    ));
+    html.push_str(&format!("<td>{:.2}%</td></tr>", ytd_strat * 100.0));
 
     html.push_str("<tr><td>1Y</td>");
     if benchmark.is_some() {
@@ -1043,11 +956,7 @@ fn build_metrics_table(
 
     // Multi-year annualized returns using QuantStats-style CAGR on
     // trailing windows defined via relativedelta-equivalent dates.
-    let first_date = strategy_returns
-        .dates
-        .first()
-        .copied()
-        .unwrap_or(last_date);
+    let first_date = strategy_returns.dates.first().copied().unwrap_or(last_date);
 
     let three_y_start = last_date
         .checked_sub_months(chrono::Months::new(35))
@@ -1110,42 +1019,27 @@ fn build_metrics_table(
     if benchmark.is_some() {
         html.push_str(&format!("<td>{:.2}%</td>", three_y_bench * 100.0));
     }
-    html.push_str(&format!(
-        "<td>{:.2}%</td></tr>",
-        three_y_strat * 100.0
-    ));
+    html.push_str(&format!("<td>{:.2}%</td></tr>", three_y_strat * 100.0));
 
     html.push_str("<tr><td>5Y (ann.)</td>");
     if benchmark.is_some() {
         html.push_str(&format!("<td>{:.2}%</td>", five_y_bench * 100.0));
     }
-    html.push_str(&format!(
-        "<td>{:.2}%</td></tr>",
-        five_y_strat * 100.0
-    ));
+    html.push_str(&format!("<td>{:.2}%</td></tr>", five_y_strat * 100.0));
 
     html.push_str("<tr><td>10Y (ann.)</td>");
     if benchmark.is_some() {
         html.push_str(&format!("<td>{:.2}%</td>", ten_y_bench * 100.0));
     }
-    html.push_str(&format!(
-        "<td>{:.2}%</td></tr>",
-        ten_y_strat * 100.0
-    ));
+    html.push_str(&format!("<td>{:.2}%</td></tr>", ten_y_strat * 100.0));
 
     html.push_str("<tr><td>All-time (ann.)</td>");
     if benchmark.is_some() {
         html.push_str(&format!("<td>{:.2}%</td>", alltime_bench * 100.0));
     }
-    html.push_str(&format!(
-        "<td>{:.2}%</td></tr>",
-        alltime_strat * 100.0
-    ));
+    html.push_str(&format!("<td>{:.2}%</td></tr>", alltime_strat * 100.0));
 
-    html.push_str(&format!(
-        r#"<tr><td colspan="{}"><hr></td></tr>"#,
-        colspan
-    ));
+    html.push_str(&format!(r#"<tr><td colspan="{}"><hr></td></tr>"#, colspan));
 
     // Best / worst days (already have)
     html.push_str("<tr><td>Best Day</td>");
@@ -1154,10 +1048,7 @@ fn build_metrics_table(
     } else if benchmark.is_some() {
         html.push_str("<td>-</td>");
     }
-    html.push_str(&format!(
-        "<td>{:.2}%</td></tr>",
-        strategy.best_day * 100.0
-    ));
+    html.push_str(&format!("<td>{:.2}%</td></tr>", strategy.best_day * 100.0));
 
     html.push_str("<tr><td>Worst Day</td>");
     if let Some(b) = benchmark {
@@ -1165,10 +1056,7 @@ fn build_metrics_table(
     } else if benchmark.is_some() {
         html.push_str("<td>-</td>");
     }
-    html.push_str(&format!(
-        "<td>{:.2}%</td></tr>",
-        strategy.worst_day * 100.0
-    ));
+    html.push_str(&format!("<td>{:.2}%</td></tr>", strategy.worst_day * 100.0));
 
     // Best / worst month and year using aggregated returns
     fn monthly_returns(series: &ReturnSeries) -> Vec<f64> {
@@ -1177,37 +1065,26 @@ fn build_metrics_table(
             if r.is_nan() {
                 continue;
             }
-            grouped
-                .entry((d.year(), d.month()))
-                .or_default()
-                .push(*r);
+            grouped.entry((d.year(), d.month())).or_default().push(*r);
         }
         let mut out = Vec::new();
         for (_k, vals) in grouped {
-            let total = vals
-                .iter()
-                .fold(1.0_f64, |acc, v| acc * (1.0 + *v))
-                - 1.0;
+            let total = vals.iter().fold(1.0_f64, |acc, v| acc * (1.0 + *v)) - 1.0;
             out.push(total);
         }
         out
     }
 
     let strat_monthly = monthly_returns(strategy_returns);
-    let bench_monthly =
-        benchmark_returns.map(|b| monthly_returns(b));
+    let bench_monthly = benchmark_returns.map(|b| monthly_returns(b));
 
     let best_month_strat = strat_monthly
         .iter()
         .cloned()
         .fold(f64::NEG_INFINITY, f64::max);
-    let worst_month_strat = strat_monthly
-        .iter()
-        .cloned()
-        .fold(f64::INFINITY, f64::min);
+    let worst_month_strat = strat_monthly.iter().cloned().fold(f64::INFINITY, f64::min);
 
-    let (best_month_bench, worst_month_bench) = if let Some(m) = bench_monthly.as_ref()
-    {
+    let (best_month_bench, worst_month_bench) = if let Some(m) = bench_monthly.as_ref() {
         let best = m.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
         let worst = m.iter().cloned().fold(f64::INFINITY, f64::min);
         (best, worst)
@@ -1216,8 +1093,7 @@ fn build_metrics_table(
     };
 
     let yearly_strat_map = yearly_compounded(strategy_returns);
-    let yearly_bench_map =
-        benchmark_returns.map(yearly_compounded);
+    let yearly_bench_map = benchmark_returns.map(yearly_compounded);
 
     let best_year_strat = yearly_strat_map
         .values()
@@ -1228,62 +1104,37 @@ fn build_metrics_table(
         .cloned()
         .fold(f64::INFINITY, f64::min);
 
-    let (best_year_bench, worst_year_bench) =
-        if let Some(ref yb) = yearly_bench_map {
-            let best = yb.values().cloned().fold(f64::NEG_INFINITY, f64::max);
-            let worst = yb.values().cloned().fold(f64::INFINITY, f64::min);
-            (best, worst)
-        } else {
-            (0.0, 0.0)
-        };
+    let (best_year_bench, worst_year_bench) = if let Some(ref yb) = yearly_bench_map {
+        let best = yb.values().cloned().fold(f64::NEG_INFINITY, f64::max);
+        let worst = yb.values().cloned().fold(f64::INFINITY, f64::min);
+        (best, worst)
+    } else {
+        (0.0, 0.0)
+    };
 
     html.push_str("<tr><td>Best Month</td>");
     if benchmark.is_some() {
-        html.push_str(&format!(
-            "<td>{:.2}%</td>",
-            best_month_bench * 100.0
-        ));
+        html.push_str(&format!("<td>{:.2}%</td>", best_month_bench * 100.0));
     }
-    html.push_str(&format!(
-        "<td>{:.2}%</td></tr>",
-        best_month_strat * 100.0
-    ));
+    html.push_str(&format!("<td>{:.2}%</td></tr>", best_month_strat * 100.0));
 
     html.push_str("<tr><td>Worst Month</td>");
     if benchmark.is_some() {
-        html.push_str(&format!(
-            "<td>{:.2}%</td>",
-            worst_month_bench * 100.0
-        ));
+        html.push_str(&format!("<td>{:.2}%</td>", worst_month_bench * 100.0));
     }
-    html.push_str(&format!(
-        "<td>{:.2}%</td></tr>",
-        worst_month_strat * 100.0
-    ));
+    html.push_str(&format!("<td>{:.2}%</td></tr>", worst_month_strat * 100.0));
 
     html.push_str("<tr><td>Best Year</td>");
     if benchmark.is_some() {
-        html.push_str(&format!(
-            "<td>{:.2}%</td>",
-            best_year_bench * 100.0
-        ));
+        html.push_str(&format!("<td>{:.2}%</td>", best_year_bench * 100.0));
     }
-    html.push_str(&format!(
-        "<td>{:.2}%</td></tr>",
-        best_year_strat * 100.0
-    ));
+    html.push_str(&format!("<td>{:.2}%</td></tr>", best_year_strat * 100.0));
 
     html.push_str("<tr><td>Worst Year</td>");
     if benchmark.is_some() {
-        html.push_str(&format!(
-            "<td>{:.2}%</td>",
-            worst_year_bench * 100.0
-        ));
+        html.push_str(&format!("<td>{:.2}%</td>", worst_year_bench * 100.0));
     }
-    html.push_str(&format!(
-        "<td>{:.2}%</td></tr>",
-        worst_year_strat * 100.0
-    ));
+    html.push_str(&format!("<td>{:.2}%</td></tr>", worst_year_strat * 100.0));
 
     // Drawdown-based metrics for strategy and benchmark
     let all_dd_strat = crate::stats::all_drawdowns(strategy_returns);
@@ -1292,20 +1143,12 @@ fn build_metrics_table(
     let avg_dd = if all_dd_strat.is_empty() {
         0.0
     } else {
-        all_dd_strat
-            .iter()
-            .map(|d| d.depth)
-            .sum::<f64>()
-            / all_dd_strat.len() as f64
+        all_dd_strat.iter().map(|d| d.depth).sum::<f64>() / all_dd_strat.len() as f64
     };
     let avg_dd_days = if all_dd_strat.is_empty() {
         0.0
     } else {
-        all_dd_strat
-            .iter()
-            .map(|d| d.duration as f64)
-            .sum::<f64>()
-            / all_dd_strat.len() as f64
+        all_dd_strat.iter().map(|d| d.duration as f64).sum::<f64>() / all_dd_strat.len() as f64
     };
 
     let (avg_dd_bench, avg_dd_days_bench) = if let Some(ref dd_b) = all_dd_bench {
@@ -1313,11 +1156,7 @@ fn build_metrics_table(
             (0.0, 0.0)
         } else {
             let depth = dd_b.iter().map(|d| d.depth).sum::<f64>() / dd_b.len() as f64;
-            let days = dd_b
-                .iter()
-                .map(|d| d.duration as f64)
-                .sum::<f64>()
-                / dd_b.len() as f64;
+            let days = dd_b.iter().map(|d| d.duration as f64).sum::<f64>() / dd_b.len() as f64;
             (depth, days)
         }
     } else {
@@ -1331,8 +1170,7 @@ fn build_metrics_table(
     } else {
         0.0
     };
-    let recovery_bench = if let (Some(b), Some(vals)) = (benchmark, bench_vals.as_ref())
-    {
+    let recovery_bench = if let (Some(b), Some(vals)) = (benchmark, bench_vals.as_ref()) {
         if b.max_drawdown != 0.0 {
             let total = vals.iter().sum::<f64>() - rf;
             total.abs() / b.max_drawdown.abs()
@@ -1348,10 +1186,7 @@ fn build_metrics_table(
     let serenity_strat = serenity_index(strategy_returns, rf);
     let serenity_bench = benchmark_returns.map(|b| serenity_index(b, rf));
 
-    html.push_str(&format!(
-        r#"<tr><td colspan="{}"><hr></td></tr>"#,
-        colspan
-    ));
+    html.push_str(&format!(r#"<tr><td colspan="{}"><hr></td></tr>"#, colspan));
 
     html.push_str("<tr><td>Avg. Drawdown</td>");
     if benchmark.is_some() {
@@ -1373,27 +1208,18 @@ fn build_metrics_table(
 
     html.push_str("<tr><td>Ulcer Index</td>");
     if benchmark.is_some() {
-        html.push_str(&format!(
-            "<td>{:.2}</td>",
-            ulcer_bench.unwrap_or(0.0)
-        ));
+        html.push_str(&format!("<td>{:.2}</td>", ulcer_bench.unwrap_or(0.0)));
     }
     html.push_str(&format!("<td>{:.2}</td></tr>", ulcer_strat));
 
     html.push_str("<tr><td>Serenity Index</td>");
     if benchmark.is_some() {
-        html.push_str(&format!(
-            "<td>{:.2}</td>",
-            serenity_bench.unwrap_or(0.0)
-        ));
+        html.push_str(&format!("<td>{:.2}</td>", serenity_bench.unwrap_or(0.0)));
     }
     html.push_str(&format!("<td>{:.2}</td></tr>", serenity_strat));
 
     // Separator before average up/down month and win stats
-    html.push_str(&format!(
-        r#"<tr><td colspan="{}"><hr></td></tr>"#,
-        colspan
-    ));
+    html.push_str(&format!(r#"<tr><td colspan="{}"><hr></td></tr>"#, colspan));
 
     // Avg. Up / Down Month (based on monthly compounded returns).
     // When a benchmark is present, we follow QuantStats' DataFrame
@@ -1448,11 +1274,7 @@ fn build_metrics_table(
             (up_s_avg, up_b_avg, down_s_avg, down_b_avg)
         } else {
             let avg_up_month_strat = {
-                let ups: Vec<f64> = strat_monthly
-                    .iter()
-                    .copied()
-                    .filter(|v| *v > 0.0)
-                    .collect();
+                let ups: Vec<f64> = strat_monthly.iter().copied().filter(|v| *v > 0.0).collect();
                 if ups.is_empty() {
                     None
                 } else {
@@ -1460,11 +1282,7 @@ fn build_metrics_table(
                 }
             };
             let avg_down_month_strat = {
-                let downs: Vec<f64> = strat_monthly
-                    .iter()
-                    .copied()
-                    .filter(|v| *v < 0.0)
-                    .collect();
+                let downs: Vec<f64> = strat_monthly.iter().copied().filter(|v| *v < 0.0).collect();
                 if downs.is_empty() {
                     None
                 } else {
@@ -1504,14 +1322,9 @@ fn build_metrics_table(
 
     // Win statistics (days)
     let non_zero_days = strat_vals.iter().filter(|v| **v != 0.0).count().max(1) as f64;
-    let win_days_strat =
-        strat_vals.iter().filter(|v| **v > 0.0).count() as f64 / non_zero_days;
+    let win_days_strat = strat_vals.iter().filter(|v| **v > 0.0).count() as f64 / non_zero_days;
     let win_days_bench = bench_vals.as_ref().map(|vals| {
-        let non_zero = vals
-            .iter()
-            .filter(|v| **v != 0.0)
-            .count()
-            .max(1) as f64;
+        let non_zero = vals.iter().filter(|v| **v != 0.0).count().max(1) as f64;
         vals.iter().filter(|v| **v > 0.0).count() as f64 / non_zero
     });
 
@@ -1521,10 +1334,7 @@ fn build_metrics_table(
     } else if benchmark.is_some() {
         html.push_str("<td>-</td>");
     }
-    html.push_str(&format!(
-        "<td>{:.2}%</td></tr>",
-        win_days_strat * 100.0
-    ));
+    html.push_str(&format!("<td>{:.2}%</td></tr>", win_days_strat * 100.0));
 
     // Win statistics for months / quarters / years
     fn win_ratio_from_grouped(groups: &[f64]) -> f64 {
@@ -1542,42 +1352,30 @@ fn build_metrics_table(
                 continue;
             }
             let quarter = (d.month() - 1) / 3 + 1;
-            grouped
-                .entry((d.year(), quarter))
-                .or_default()
-                .push(*r);
+            grouped.entry((d.year(), quarter)).or_default().push(*r);
         }
         let mut out = Vec::new();
         for (_k, vals) in grouped {
-            let total = vals
-                .iter()
-                .fold(1.0_f64, |acc, v| acc * (1.0 + *v))
-                - 1.0;
+            let total = vals.iter().fold(1.0_f64, |acc, v| acc * (1.0 + *v)) - 1.0;
             out.push(total);
         }
         out
     }
 
     let win_month_strat = win_ratio_from_grouped(&strat_monthly);
-    let win_month_bench = bench_monthly
-        .as_ref()
-        .map(|v| win_ratio_from_grouped(v));
+    let win_month_bench = bench_monthly.as_ref().map(|v| win_ratio_from_grouped(v));
 
     let strat_quarterly = quarterly_returns(strategy_returns);
-    let bench_quarterly =
-        benchmark_returns.map(quarterly_returns);
+    let bench_quarterly = benchmark_returns.map(quarterly_returns);
 
     let win_quarter_strat = win_ratio_from_grouped(&strat_quarterly);
-    let win_quarter_bench = bench_quarterly
-        .as_ref()
-        .map(|v| win_ratio_from_grouped(v));
+    let win_quarter_bench = bench_quarterly.as_ref().map(|v| win_ratio_from_grouped(v));
 
-    let win_year_strat = win_ratio_from_grouped(
-        &yearly_strat_map.values().cloned().collect::<Vec<_>>(),
-    );
-    let win_year_bench = yearly_bench_map.as_ref().map(|m| {
-        win_ratio_from_grouped(&m.values().cloned().collect::<Vec<_>>())
-    });
+    let win_year_strat =
+        win_ratio_from_grouped(&yearly_strat_map.values().cloned().collect::<Vec<_>>());
+    let win_year_bench = yearly_bench_map
+        .as_ref()
+        .map(|m| win_ratio_from_grouped(&m.values().cloned().collect::<Vec<_>>()));
 
     html.push_str("<tr><td>Win Month</td>");
     if let Some(v) = win_month_bench {
@@ -1585,10 +1383,7 @@ fn build_metrics_table(
     } else if benchmark.is_some() {
         html.push_str("<td>-</td>");
     }
-    html.push_str(&format!(
-        "<td>{:.2}%</td></tr>",
-        win_month_strat * 100.0
-    ));
+    html.push_str(&format!("<td>{:.2}%</td></tr>", win_month_strat * 100.0));
 
     html.push_str("<tr><td>Win Quarter</td>");
     if let Some(v) = win_quarter_bench {
@@ -1596,10 +1391,7 @@ fn build_metrics_table(
     } else if benchmark.is_some() {
         html.push_str("<td>-</td>");
     }
-    html.push_str(&format!(
-        "<td>{:.2}%</td></tr>",
-        win_quarter_strat * 100.0
-    ));
+    html.push_str(&format!("<td>{:.2}%</td></tr>", win_quarter_strat * 100.0));
 
     html.push_str("<tr><td>Win Year</td>");
     if let Some(v) = win_year_bench {
@@ -1607,15 +1399,9 @@ fn build_metrics_table(
     } else if benchmark.is_some() {
         html.push_str("<td>-</td>");
     }
-    html.push_str(&format!(
-        "<td>{:.2}%</td></tr>",
-        win_year_strat * 100.0
-    ));
+    html.push_str(&format!("<td>{:.2}%</td></tr>", win_year_strat * 100.0));
 
-    html.push_str(&format!(
-        r#"<tr><td colspan="{}"><hr></td></tr>"#,
-        colspan
-    ));
+    html.push_str(&format!(r#"<tr><td colspan="{}"><hr></td></tr>"#, colspan));
 
     // Beta / Alpha / Correlation / Treynor
     html.push_str("<tr><td>Beta</td>");
@@ -1634,19 +1420,13 @@ fn build_metrics_table(
     if benchmark.is_some() {
         html.push_str("<td>-</td>");
     }
-    html.push_str(&format!(
-        "<td>{:.2}%</td></tr>",
-        corr * 100.0
-    ));
+    html.push_str(&format!("<td>{:.2}%</td></tr>", corr * 100.0));
 
     html.push_str("<tr><td>Treynor Ratio</td>");
     if benchmark.is_some() {
         html.push_str("<td>-</td>");
     }
-    html.push_str(&format!(
-        "<td>{:.2}%</td></tr>",
-        treynor * 100.0
-    ));
+    html.push_str(&format!("<td>{:.2}%</td></tr>", treynor * 100.0));
 
     html.push_str("</tbody></table>");
     html
@@ -1746,10 +1526,7 @@ fn build_drawdown_info(drawdowns: &[Drawdown]) -> String {
     html
 }
 
-fn build_eoy_table(
-    strategy: &ReturnSeries,
-    benchmark: Option<&ReturnSeries>,
-) -> String {
+fn build_eoy_table(strategy: &ReturnSeries, benchmark: Option<&ReturnSeries>) -> String {
     let strat_years = yearly_compounded(strategy);
     let bench_years = benchmark.map(yearly_compounded);
 
@@ -1820,10 +1597,7 @@ fn yearly_compounded(series: &ReturnSeries) -> BTreeMap<i32, f64> {
         if vals.is_empty() {
             continue;
         }
-        let total = vals
-            .iter()
-            .fold(1.0_f64, |acc, r| acc * (1.0 + *r))
-            - 1.0;
+        let total = vals.iter().fold(1.0_f64, |acc, r| acc * (1.0 + *r)) - 1.0;
         out.insert(year, total);
     }
     out
@@ -1952,11 +1726,7 @@ fn empirical_cvar(values: &[f64], confidence: f64) -> f64 {
     }
     let var = empirical_var(values, confidence);
     let tail: Vec<f64> = values.iter().copied().filter(|v| *v <= var).collect();
-    if tail.is_empty() {
-        var
-    } else {
-        mean(&tail)
-    }
+    if tail.is_empty() { var } else { mean(&tail) }
 }
 
 fn max_consecutive_streak(values: &[f64], positive: bool) -> u32 {
@@ -2026,11 +1796,7 @@ fn profit_factor(values: &[f64]) -> f64 {
         }
     }
     if losses_sum == 0.0 {
-        if wins_sum == 0.0 {
-            0.0
-        } else {
-            f64::INFINITY
-        }
+        if wins_sum == 0.0 { 0.0 } else { f64::INFINITY }
     } else {
         wins_sum / losses_sum
     }
@@ -2040,11 +1806,7 @@ fn quantile(values: &[f64], q: f64) -> f64 {
     if values.is_empty() {
         return 0.0;
     }
-    let mut v: Vec<f64> = values
-        .iter()
-        .copied()
-        .filter(|x| x.is_finite())
-        .collect();
+    let mut v: Vec<f64> = values.iter().copied().filter(|x| x.is_finite()).collect();
     if v.is_empty() {
         return 0.0;
     }
@@ -2079,11 +1841,7 @@ fn outlier_win_ratio(values: &[f64]) -> f64 {
     if values.is_empty() {
         return 0.0;
     }
-    let wins: Vec<f64> = values
-        .iter()
-        .copied()
-        .filter(|v| *v >= 0.0)
-        .collect();
+    let wins: Vec<f64> = values.iter().copied().filter(|v| *v >= 0.0).collect();
     if wins.is_empty() {
         return 0.0;
     }
@@ -2099,11 +1857,7 @@ fn outlier_loss_ratio(values: &[f64]) -> f64 {
     if values.is_empty() {
         return 0.0;
     }
-    let losses: Vec<f64> = values
-        .iter()
-        .copied()
-        .filter(|v| *v < 0.0)
-        .collect();
+    let losses: Vec<f64> = values.iter().copied().filter(|v| *v < 0.0).collect();
     if losses.is_empty() {
         return 0.0;
     }
@@ -2197,11 +1951,7 @@ fn serenity_index(returns: &ReturnSeries, rf: f64) -> f64 {
     // Use CVaR-style pitfall like QuantStats: normal VaR threshold and
     // tail mean of drawdowns below that threshold.
     let cvar_dd = {
-        let vals_dd: Vec<f64> = dd
-            .iter()
-            .copied()
-            .filter(|v| v.is_finite())
-            .collect();
+        let vals_dd: Vec<f64> = dd.iter().copied().filter(|v| v.is_finite()).collect();
         if vals_dd.len() < 2 {
             0.0
         } else {
@@ -2250,8 +2000,7 @@ fn serenity_index(returns: &ReturnSeries, rf: f64) -> f64 {
                 let x = x.abs();
                 let t = 1.0 / (1.0 + 0.3275911 * x);
                 let y = 1.0
-                    - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t
-                        - 0.284496736)
+                    - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736)
                         * t
                         + 0.254829592)
                         * t
@@ -2262,10 +2011,7 @@ fn serenity_index(returns: &ReturnSeries, rf: f64) -> f64 {
             let z = norm_ppf_local(1.0 - conf);
             let var_threshold = mean + 1.0 * std_dd * z;
 
-            let tail: Vec<f64> = vals_dd
-                .into_iter()
-                .filter(|v| *v < var_threshold)
-                .collect();
+            let tail: Vec<f64> = vals_dd.into_iter().filter(|v| *v < var_threshold).collect();
             if tail.is_empty() {
                 var_threshold
             } else {
