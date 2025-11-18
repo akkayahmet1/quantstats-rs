@@ -504,16 +504,19 @@ fn draw_line_chart(dates: &[NaiveDate], values: &[f64], title: &str) -> String {
         y2 = axis_bottom
     ));
 
-    for tick in &ticks {
+    for (idx, tick) in ticks.iter().enumerate() {
         let y = value_to_y(*tick);
         let stroke = if tick.abs() < 1e-9 { "#000" } else { "#eeeeee" };
-        svg.push_str(&format!(
-            r##"<line x1="{x1:.2}" y1="{y:.2}" x2="{x2:.2}" y2="{y:.2}" stroke="{stroke}" stroke-width="1" />"##,
-            x1 = axis_left,
-            x2 = width - PADDING,
-            y = y,
-            stroke = stroke
-        ));
+        let is_zero = tick.abs() < 1e-9;
+        if !is_zero && idx + 1 != ticks.len() {
+            svg.push_str(&format!(
+                r##"<line x1="{x1:.2}" y1="{y:.2}" x2="{x2:.2}" y2="{y:.2}" stroke="{stroke}" stroke-width="1" />"##,
+                x1 = axis_left,
+                x2 = width - PADDING,
+                y = y,
+                stroke = stroke
+            ));
+        }
         svg.push_str(&format!(
             r##"<line x1="{x1:.2}" y1="{y:.2}" x2="{x2:.2}" y2="{y:.2}" stroke="#000" stroke-width="1" />"##,
             x1 = axis_left - 4.0,
