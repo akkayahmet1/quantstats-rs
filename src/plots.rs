@@ -74,18 +74,31 @@ fn nice_step(step: f64) -> f64 {
 }
 
 fn generate_ticks(min_v: f64, max_v: f64) -> Vec<f64> {
-    let min = min_v.min(0.0);
-    let mut max = max_v.max(0.0);
-    if (max - min).abs() < 1e-9 {
-        max = min + 0.1;
+    let mut min = min_v;
+    let mut max = max_v;
+
+    if !min.is_finite() || !max.is_finite() {
+        return Vec::new();
     }
-    let step = nice_step((max - min) / 4.0);
-    let start = (min / step).floor() * step;
-    let end = (max / step).ceil() * step;
+
+    if (max - min).abs() < 1e-9 {
+        let adjust = if min == 0.0 { 1.0 } else { min.abs() * 0.1 };
+        min -= adjust;
+        max += adjust;
+    }
+
+    let axis_min = min;
+    let axis_max = max;
+
+    let step = nice_step((axis_max - axis_min) / 4.0);
+    let start = (axis_min / step).floor() * step;
+    let end = (axis_max / step).ceil() * step;
     let mut ticks = Vec::new();
     let mut val = start;
     while val <= end + 1e-9 {
-        ticks.push(val);
+        if val >= axis_min - 1e-9 && val <= axis_max + 1e-9 {
+            ticks.push(val);
+        }
         val += step;
     }
     ticks
@@ -256,7 +269,7 @@ fn render_indexed_line_chart(
     let axis_top = PADDING;
     let axis_bottom = height - PADDING;
     svg.push_str(&format!(
-        r##"<line x1=\"{x:.2}\" y1=\"{y1:.2}\" x2=\"{x:.2}\" y2=\"{y2:.2}\" stroke=\"#000\" stroke-width=\"1\" />"##,
+        r##"<line x1="{x:.2}" y1="{y1:.2}" x2="{x:.2}" y2="{y2:.2}" stroke="#000" stroke-width="1" />"##,
         x = axis_left,
         y1 = axis_top,
         y2 = axis_bottom
@@ -270,20 +283,20 @@ fn render_indexed_line_chart(
         }
         let stroke = if tick.abs() < 1e-9 { "#000" } else { "#eeeeee" };
         svg.push_str(&format!(
-            r##"<line x1=\"{x1:.2}\" y1=\"{y:.2}\" x2=\"{x2:.2}\" y2=\"{y:.2}\" stroke=\"{stroke}\" stroke-width=\"1\" />"##,
+            r##"<line x1="{x1:.2}" y1="{y:.2}" x2="{x2:.2}" y2="{y:.2}" stroke="{stroke}" stroke-width="1" />"##,
             x1 = axis_left,
             x2 = axis_right,
             y = y,
             stroke = stroke
         ));
         svg.push_str(&format!(
-            r##"<line x1=\"{x1:.2}\" y1=\"{y:.2}\" x2=\"{x2:.2}\" y2=\"{y:.2}\" stroke=\"#000\" stroke-width=\"1\" />"##,
+            r##"<line x1="{x1:.2}" y1="{y:.2}" x2="{x2:.2}" y2="{y:.2}" stroke="#000" stroke-width="1" />"##,
             x1 = axis_left - 4.0,
             x2 = axis_left,
             y = y
         ));
         svg.push_str(&format!(
-            r##"<text x=\"{x:.2}\" y=\"{y:.2}\" text-anchor=\"end\" fill=\"#333\">{label}</text>"##,
+            r##"<text x="{x:.2}" y="{y:.2}" text-anchor="end" fill="#333">{label}</text>"##,
             x = axis_left - 6.0,
             y = (y - 2.0).max(axis_top + 4.0).min(axis_bottom - 4.0),
             label = format_axis_value(*tick, format_percent)
@@ -303,7 +316,7 @@ fn render_indexed_line_chart(
         }
         let x = axis_xs[idx];
         svg.push_str(&format!(
-            r##"<line x1=\"{x:.2}\" y1=\"{y1:.2}\" x2=\"{x:.2}\" y2=\"{y2:.2}\" stroke=\"#f4f4f4\" stroke-width=\"1\" />"##,
+            r##"<line x1="{x:.2}" y1="{y1:.2}" x2="{x:.2}" y2="{y2:.2}" stroke="#f4f4f4" stroke-width="1" />"##,
             x = x,
             y1 = axis_top,
             y2 = axis_bottom
@@ -594,7 +607,7 @@ fn draw_line_chart(dates: &[NaiveDate], values: &[f64], title: &str) -> String {
         PADDING + (1.0 - norm) * inner_height
     };
 
-    let ticks = generate_ticks(min_v, max_v);
+    let ticks = generate_ticks(min_v.min(0.0), max_v.max(0.0));
 
     let mut svg = String::new();
     svg.push_str(&svg_header(WIDTH, HEIGHT));
@@ -1300,7 +1313,7 @@ pub fn eoy_returns(strategy: &ReturnSeries, benchmark: Option<&ReturnSeries>) ->
         }
     }
 
-    let ticks = generate_ticks(min_v, max_v);
+    let ticks = generate_ticks(min_v.min(0.0), max_v.max(0.0));
     if ticks.len() < 2 {
         return String::new();
     }
@@ -1926,7 +1939,7 @@ pub fn monthly_distribution(returns: &ReturnSeries, benchmark: Option<&ReturnSer
         }
     }
 
-    let ticks = generate_ticks(min_v, max_v);
+    let ticks = generate_ticks(min_v.min(0.0), max_v.max(0.0));
     if ticks.len() < 2 {
         return String::new();
     }
@@ -2351,7 +2364,7 @@ pub fn rolling_volatility(
         &series,
         &guides,
         "Rolling Volatility (6-Months)",
-        false,
+        true,
         false,
         series.len() > 1,
         true,
