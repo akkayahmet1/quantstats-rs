@@ -729,6 +729,23 @@ fn draw_line_chart(dates: &[NaiveDate], values: &[f64], title: &str) -> String {
         ));
     }
 
+    // Special case: for Daily Returns (Cumulative Sum), highlight the 0% level
+    // with a black dashed horizontal line, mirroring QuantStats.
+    if title == "Daily Returns (Cumulative Sum)" && min_v <= 0.0 && max_v >= 0.0 {
+        let mut y0 = value_to_y(0.0);
+        if y0 < axis_top {
+            y0 = axis_top;
+        } else if y0 > axis_bottom {
+            y0 = axis_bottom;
+        }
+        svg.push_str(&format!(
+            r##"<line x1="{x1:.2}" y1="{y:.2}" x2="{x2:.2}" y2="{y:.2}" stroke="#000" stroke-width="1" stroke-dasharray="4 3" />"##,
+            x1 = axis_left,
+            x2 = width - PADDING,
+            y = y0
+        ));
+    }
+
     let mut points = Vec::new();
     for (idx, value) in values.iter().enumerate() {
         if !value.is_finite() || idx >= xs.len() {
