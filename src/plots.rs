@@ -479,7 +479,8 @@ fn add_time_axis(
         ));
     }
 
-    // Monthly labels
+    // Collect first index for each (year, month)
+    let mut month_starts: Vec<(usize, &NaiveDate)> = Vec::new();
     let mut last_month: Option<(i32, u32)> = None;
     for (idx, date) in dates.iter().enumerate() {
         let key = (date.year(), date.month());
@@ -491,15 +492,40 @@ fn add_time_axis(
         if idx >= xs.len() {
             break;
         }
-        let x = xs[idx];
-        let label = date.format("%Y-%m").to_string();
+        month_starts.push((idx, date));
+    }
 
+    if month_starts.is_empty() {
+        return;
+    }
+
+    // Limit number of visible labels to keep things readable.
+    let max_labels = 8usize;
+    let total_months = month_starts.len();
+    let label_step = if total_months <= max_labels {
+        1
+    } else {
+        ((total_months as f64) / (max_labels as f64)).ceil() as usize
+    }
+    .max(1);
+
+    for (i, (idx, date)) in month_starts.iter().enumerate() {
+        let x = xs[*idx];
+
+        // Full-height monthly grid line
         svg.push_str(&format!(
             r##"<line x1="{x:.2}" y1="{y1:.2}" x2="{x:.2}" y2="{y2:.2}" stroke="#dddddd" stroke-width="0.5" />"##,
             x = x,
             y1 = PADDING,
             y2 = height - PADDING
         ));
+
+        // Decide whether to show label for this month
+        let is_edge = i == 0 || i + 1 == total_months;
+        let show_label = is_edge || (i % label_step == 0);
+        if !show_label {
+            continue;
+        }
 
         svg.push_str(&format!(
             r##"<line x1="{x:.2}" y1="{y1:.2}" x2="{x:.2}" y2="{y2:.2}" stroke="#ccc" stroke-width="1" />"##,
@@ -508,6 +534,7 @@ fn add_time_axis(
             y2 = axis_y + 4.0
         ));
 
+        let label = date.format("%Y-%m").to_string();
         svg.push_str(&format!(
             r#"<text x="{x:.2}" y="{y:.2}" text-anchor="middle">{label}</text>"#,
             x = x,
