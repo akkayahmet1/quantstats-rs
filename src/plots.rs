@@ -1641,6 +1641,65 @@ fn quarterly_compounded(series: &ReturnSeries) -> BTreeMap<(i32, u32), f64> {
     })
 }
 
+fn accumulate_histogram(
+    data: &BTreeMap<(i32, u32), f64>,
+    counts: &mut [usize],
+    min_value: f64,
+    bin_width: f64,
+) {
+    if bin_width <= 0.0 {
+        return;
+    }
+    let bins = counts.len() as isize;
+    for value in data.values() {
+        if !value.is_finite() {
+            continue;
+        }
+        let mut idx = ((*value - min_value) / bin_width).floor() as isize;
+        if idx < 0 {
+            idx = 0;
+        }
+        if idx >= bins {
+            idx = bins - 1;
+        }
+        counts[idx as usize] += 1;
+    }
+}
+
+fn kde_density(values: &[f64], xs: &[f64]) -> Vec<f64> {
+    let clean: Vec<f64> = values.iter().copied().filter(|v| v.is_finite()).collect();
+    if clean.len() < 2 {
+        return vec![0.0; xs.len()];
+    }
+
+    let n = clean.len() as f64;
+    let mean = clean.iter().sum::<f64>() / n;
+    let var = clean
+        .iter()
+        .map(|x| {
+            let d = x - mean;
+            d * d
+        })
+        .sum::<f64>()
+        / (n - 1.0);
+    let std = var.sqrt();
+    let bandwidth = (1.06 * std * n.powf(-0.2)).max(1e-6);
+
+    let norm_const = 1.0 / (n * bandwidth * (2.0 * std::f64::consts::PI).sqrt());
+    xs.iter()
+        .map(|x| {
+            clean
+                .iter()
+                .map(|v| {
+                    let z = (x - v) / bandwidth;
+                    (-0.5 * z * z).exp()
+                })
+                .sum::<f64>()
+                * norm_const
+        })
+        .collect()
+}
+
 pub fn monthly_distribution(returns: &ReturnSeries, benchmark: Option<&ReturnSeries>) -> String {
     let monthly = monthly_compounded(returns);
     let monthly_bench = benchmark.map(monthly_compounded);
@@ -1692,45 +1751,54 @@ pub fn monthly_distribution(returns: &ReturnSeries, benchmark: Option<&ReturnSer
     let bottom_pad = 60.0;
     let inner_height = height - top_pad - bottom_pad;
     let bar_area = width - left_pad - right_pad;
-    let span = ticks.last().unwrap() - ticks.first().unwrap();
+    let min_tick = *ticks.first().unwrap();
+    let max_tick = *ticks.last().unwrap();
+    let span = (max_tick - min_tick).max(1e-9);
+    let bin_count = 20usize;
+    let bin_width = span / bin_count as f64;
+    let slot_width = bar_area / bin_count as f64;
 
-    let build_bars = |data: &BTreeMap<(i32, u32), f64>, color_pos: &str, color_neg: &str| {
-        let mut bars = Vec::new();
-        let min_v = *ticks.first().unwrap();
-        let bin_count = 20usize;
-        let bin_width = span / bin_count as f64;
+    let mut strat_counts = vec![0usize; bin_count];
+    accumulate_histogram(&monthly, &mut strat_counts, min_tick, bin_width);
+    let strat_values: Vec<f64> = monthly.values().copied().collect();
+
+    let bench_counts = monthly_bench.as_ref().map(|b| {
         let mut counts = vec![0usize; bin_count];
-        for v in data.values() {
-            if !v.is_finite() {
-                continue;
+        accumulate_histogram(b, &mut counts, min_tick, bin_width);
+        counts
+    });
+    let bench_values = monthly_bench
+        .as_ref()
+        .map(|b| b.values().copied().collect::<Vec<_>>());
+
+    let mut max_count = strat_counts.iter().copied().max().unwrap_or(0);
+    if let Some(ref bench) = bench_counts {
+        if let Some(m) = bench.iter().copied().max() {
+            if m > max_count {
+                max_count = m;
             }
-            let mut idx = ((v - min_v) / bin_width).floor() as isize;
-            if idx < 0 {
-                idx = 0;
-            }
-            if idx as usize >= bin_count {
-                idx = bin_count as isize - 1;
-            }
-            counts[idx as usize] += 1;
         }
-        let max_count = *counts.iter().max().unwrap_or(&1) as f64;
-        if max_count == 0.0 {
-            return bars;
-        }
+    }
+    if max_count == 0 {
+        return String::new();
+    }
+
+    let build_bars = |counts: &[usize], color_pos: &str, color_neg: &str| {
+        let mut bars = Vec::new();
         for (idx, count) in counts.iter().enumerate() {
             if *count == 0 {
                 continue;
             }
-            let ratio = *count as f64 / max_count;
+            let ratio = *count as f64 / max_count as f64;
             let bar_height = ratio * inner_height;
-            let x = left_pad + idx as f64 * (bar_area / bin_count as f64);
+            let x = left_pad + idx as f64 * slot_width;
             let y = top_pad + (inner_height - bar_height);
-            let mid = min_v + (idx as f64 + 0.5) * bin_width;
+            let mid = min_tick + (idx as f64 + 0.5) * bin_width;
             let color = if mid >= 0.0 { color_pos } else { color_neg };
             bars.push((
-                x,
+                x + slot_width * 0.05,
                 y,
-                (bar_area / bin_count as f64) * 0.9,
+                slot_width * 0.9,
                 bar_height,
                 color.to_string(),
             ));
@@ -1738,10 +1806,42 @@ pub fn monthly_distribution(returns: &ReturnSeries, benchmark: Option<&ReturnSer
         bars
     };
 
-    let strat_bars = build_bars(&monthly, "#4fa487", "#af4b64");
-    let bench_bars = monthly_bench
+    let strat_bars = build_bars(&strat_counts, "#4fa487", "#af4b64");
+    let bench_bars = bench_counts
         .as_ref()
-        .map(|b| build_bars(b, "#ff9933", "#c96a40"));
+        .map(|counts| build_bars(counts, "#ff9933", "#c96a40"));
+
+    let density_points = 180;
+    let xs: Vec<f64> = (0..=density_points)
+        .map(|i| min_tick + span * (i as f64 / density_points as f64))
+        .collect();
+    let strat_density = kde_density(&strat_values, &xs);
+    let bench_density = bench_values.as_ref().map(|vals| kde_density(vals, &xs));
+    let mut density_max = strat_density.iter().copied().fold(0.0_f64, f64::max);
+    if let Some(ref bench) = bench_density {
+        density_max = density_max.max(bench.iter().copied().fold(0.0, f64::max));
+    }
+    if density_max == 0.0 {
+        density_max = 1.0;
+    }
+    let density_to_svg = |vals: &[f64], color: &str| {
+        let mut path = String::new();
+        for (idx, val) in vals.iter().enumerate() {
+            let x = left_pad + ((xs[idx] - min_tick) / span).clamp(0.0, 1.0) * bar_area;
+            let h = (val / density_max).clamp(0.0, 1.0) * inner_height;
+            let y = top_pad + (inner_height - h);
+            if idx == 0 {
+                path.push_str(&format!("M{x:.2},{y:.2} "));
+            } else {
+                path.push_str(&format!("L{x:.2},{y:.2} "));
+            }
+        }
+        format!(
+            r##"<path d="{path}" fill="none" stroke="{color}" stroke-width="1.4" />"##,
+            path = path.trim(),
+            color = color
+        )
+    };
 
     let mut svg = String::new();
     svg.push_str(&svg_header(WIDTH, HEIGHT));
@@ -1751,12 +1851,40 @@ pub fn monthly_distribution(returns: &ReturnSeries, benchmark: Option<&ReturnSer
         "Distribution of Monthly Returns"
     };
 
+    // grid background – horizontal bands
+    let grid_steps = 4;
+    for step in 0..=grid_steps {
+        let frac = step as f64 / grid_steps as f64;
+        let y = top_pad + frac * inner_height;
+        let stroke = if step == grid_steps {
+            "#000"
+        } else {
+            "#f0f0f0"
+        };
+        svg.push_str(&format!(
+            r##"<line x1="{x1:.2}" y1="{y:.2}" x2="{x2:.2}" y2="{y:.2}" stroke="{stroke}" stroke-width="1" />"##,
+            x1 = left_pad,
+            x2 = width - right_pad,
+            y = y,
+            stroke = stroke
+        ));
+    }
+
+    // vertical grid lines for each tick
+    for tick in &ticks {
+        let norm = ((*tick - min_tick) / span).clamp(0.0, 1.0);
+        let x = left_pad + norm * bar_area;
+        svg.push_str(&format!(
+            r##"<line x1="{x:.2}" y1="{y1:.2}" x2="{x:.2}" y2="{y2:.2}" stroke="#f4f4f4" stroke-width="1" />"##,
+            x = x,
+            y1 = top_pad,
+            y2 = height - bottom_pad
+        ));
+    }
+
     // vertical zero line
-    let zero_x = if span.abs() > 0.0 {
-        left_pad + (0.0 - ticks.first().unwrap()) / span * bar_area
-    } else {
-        left_pad
-    };
+    let zero_norm = ((0.0 - min_tick) / span).clamp(0.0, 1.0);
+    let zero_x = left_pad + zero_norm * bar_area;
     svg.push_str(&format!(
         r##"<line x1="{x:.2}" y1="{y1:.2}" x2="{x:.2}" y2="{y2:.2}" stroke="#bbbbbb" stroke-width="1" />"##,
         x = zero_x,
@@ -1788,6 +1916,39 @@ pub fn monthly_distribution(returns: &ReturnSeries, benchmark: Option<&ReturnSer
         ));
     }
 
+    if let Some(ref bench_density) = bench_density {
+        svg.push_str(&density_to_svg(bench_density, "#ff9933"));
+    }
+    svg.push_str(&density_to_svg(&strat_density, "#4fa487"));
+
+    // Y axis (count scale)
+    let axis_bottom = height - bottom_pad;
+    let axis_top = top_pad;
+    let axis_height = axis_bottom - axis_top;
+    svg.push_str(&format!(
+        r##"<line x1="{x:.2}" y1="{y1:.2}" x2="{x:.2}" y2="{y2:.2}" stroke="#000" stroke-width="1" />"##,
+        x = left_pad,
+        y1 = axis_top,
+        y2 = axis_bottom
+    ));
+    let y_ticks = 4;
+    for step in 0..=y_ticks {
+        let value = max_count as f64 * (step as f64 / y_ticks as f64);
+        let y = axis_bottom - (value / max_count as f64) * axis_height;
+        svg.push_str(&format!(
+            r##"<line x1="{x1:.2}" y1="{y:.2}" x2="{x2:.2}" y2="{y:.2}" stroke="#000" stroke-width="1" />"##,
+            x1 = left_pad - 4.0,
+            x2 = left_pad,
+            y = y
+        ));
+        svg.push_str(&format!(
+            r##"<text x="{x:.2}" y="{y:.2}" text-anchor="end" fill="#333">{label:.0}</text>"##,
+            x = left_pad - 6.0,
+            y = y + 4.0,
+            label = value
+        ));
+    }
+
     // X axis and ticks
     let axis_y = height - bottom_pad;
     svg.push_str(&format!(
@@ -1798,10 +1959,7 @@ pub fn monthly_distribution(returns: &ReturnSeries, benchmark: Option<&ReturnSer
     ));
 
     for tick in &ticks {
-        if *tick < 0.0 {
-            continue;
-        }
-        let x = left_pad + (*tick - ticks.first().unwrap()) / span * bar_area;
+        let x = left_pad + ((*tick - min_tick) / span) * bar_area;
         svg.push_str(&format!(
             r##"<line x1="{x:.2}" y1="{y1:.2}" x2="{x:.2}" y2="{y2:.2}" stroke="#ccc" stroke-width="1" />"##,
             x = x,
@@ -1816,8 +1974,8 @@ pub fn monthly_distribution(returns: &ReturnSeries, benchmark: Option<&ReturnSer
         ));
     }
 
-    // legend
-    let legend_x = width - right_pad - 160.0;
+    // legend (left aligned for consistency with QuantStats)
+    let legend_x = left_pad;
     let legend_y = top_pad - 24.0;
     let mut entry_y = legend_y;
     if monthly_bench.is_some() {
