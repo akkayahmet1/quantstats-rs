@@ -281,7 +281,9 @@ fn render_indexed_line_chart(
         } else if y > axis_bottom {
             y = axis_bottom;
         }
-        let stroke = if tick.abs() < 1e-9 { "#000" } else { "#eeeeee" };
+        // Use a light grid for all ticks; the zero line (if requested)
+        // is drawn separately as a dashed guide.
+        let stroke = "#eeeeee";
         svg.push_str(&format!(
             r##"<line x1="{x1:.2}" y1="{y:.2}" x2="{x2:.2}" y2="{y:.2}" stroke="{stroke}" stroke-width="1" />"##,
             x1 = axis_left,
@@ -400,7 +402,9 @@ fn render_indexed_line_chart(
         }
     }
 
-    add_time_axis(&mut svg, range_dates, &axis_xs, width, height, None);
+    // For rolling charts, the horizontal "axis" is the zero line (when shown),
+    // so we skip drawing an extra solid baseline here.
+    add_time_axis(&mut svg, range_dates, &axis_xs, width, height, None, false, false);
 
     if show_legend && !legend_entries.is_empty() {
         draw_line_legend(&mut svg, &legend_entries, width);
@@ -437,6 +441,8 @@ fn add_time_axis(
     width: f64,
     height: f64,
     axis_override: Option<f64>,
+    draw_axis: bool,
+    dashed_axis: bool,
 ) {
     if dates.is_empty() || xs.is_empty() {
         return;
@@ -444,13 +450,21 @@ fn add_time_axis(
 
     let axis_y = axis_override.unwrap_or(height - PADDING + 5.0);
 
-    // Draw axis line
-    svg.push_str(&format!(
-        r##"<line x1="{x1:.2}" y1="{y:.2}" x2="{x2:.2}" y2="{y:.2}" stroke="#000" stroke-width="1" />"##,
-        x1 = PADDING,
-        x2 = width - PADDING,
-        y = axis_y
-    ));
+    // Draw axis line (optional, solid or dashed)
+    if draw_axis {
+        let dash_attr = if dashed_axis {
+            r#" stroke-dasharray="4 3""#
+        } else {
+            ""
+        };
+        svg.push_str(&format!(
+            "<line x1=\"{x1:.2}\" y1=\"{y:.2}\" x2=\"{x2:.2}\" y2=\"{y:.2}\" stroke=\"#000\" stroke-width=\"1\"{dash} />",
+            x1 = PADDING,
+            x2 = width - PADDING,
+            y = axis_y,
+            dash = dash_attr
+        ));
+    }
 
     // Monthly labels
     let mut last_month: Option<(i32, u32)> = None;
@@ -664,7 +678,7 @@ fn draw_line_chart(dates: &[NaiveDate], values: &[f64], title: &str) -> String {
         None
     };
 
-    add_time_axis(&mut svg, dates, &xs, width, height, axis_override);
+    add_time_axis(&mut svg, dates, &xs, width, height, axis_override, true, false);
 
     svg.push_str(svg_footer());
     wrap_plot(title, svg)
@@ -966,7 +980,16 @@ fn draw_equity_curve(
     }
 
     // For cumulative charts, keep the x-axis aligned to the zero (0%) line when visible.
-    add_time_axis(&mut svg, &returns.dates, &xs, width, height, axis_override);
+    add_time_axis(
+        &mut svg,
+        &returns.dates,
+        &xs,
+        width,
+        height,
+        axis_override,
+        true,
+        false,
+    );
 
     if benchmark.is_some() {
         let mut legend = Vec::new();
@@ -1067,7 +1090,7 @@ fn draw_bar_chart_with_dates(series: &ReturnSeries, title: &str) -> String {
         ));
     }
 
-    add_time_axis(&mut svg, &series.dates, &xs, width, height, None);
+    add_time_axis(&mut svg, &series.dates, &xs, width, height, None, true, false);
 
     svg.push_str(svg_footer());
     wrap_plot(title, svg)
@@ -1593,7 +1616,16 @@ pub fn drawdown_periods(returns: &ReturnSeries) -> String {
             .join(" ")
     ));
 
-    add_time_axis(&mut svg, &returns.dates, &xs, width, height, None);
+    add_time_axis(
+        &mut svg,
+        &returns.dates,
+        &xs,
+        width,
+        height,
+        None,
+        true,
+        false,
+    );
 
     svg.push_str(svg_footer());
     wrap_plot("Strategy - Worst 5 Drawdown Periods", svg)
@@ -2365,7 +2397,7 @@ pub fn rolling_volatility(
         &guides,
         "Rolling Volatility (6-Months)",
         true,
-        false,
+        true,
         series.len() > 1,
         true,
     )
