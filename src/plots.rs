@@ -737,13 +737,9 @@ fn draw_line_chart(dates: &[NaiveDate], values: &[f64], title: &str) -> String {
         points.push((xs[idx], value_to_y(*value)));
     }
     svg.push_str(&polyline(&points, "#348dc1"));
-    let axis_override = if min_v <= 0.0 && max_v >= 0.0 {
-        Some(value_to_y(0.0))
-    } else {
-        None
-    };
 
-    add_time_axis(&mut svg, dates, &xs, width, height, axis_override, true, false);
+    // Time axis is always drawn at the bottom, matching QuantStats.
+    add_time_axis(&mut svg, dates, &xs, width, height, None, true, false);
 
     svg.push_str(svg_footer());
     wrap_plot(title, svg)
@@ -797,7 +793,6 @@ fn draw_equity_curve(
     let inner_height = height - 2.0 * PADDING;
     let mut svg = String::new();
     svg.push_str(&svg_header(WIDTH, HEIGHT));
-    let mut axis_override: Option<f64> = None;
 
     if log_scale {
         let mut min_v = strat_curve
@@ -874,7 +869,6 @@ fn draw_equity_curve(
         }
 
         let zero_y = value_to_y(1.0);
-        axis_override = Some(zero_y);
         svg.push_str(&format!(
             r##"<line x1="{x1:.2}" y1="{y:.2}" x2="{x2:.2}" y2="{y:.2}" stroke="#000" stroke-width="1" />"##,
             x1 = PADDING,
@@ -994,7 +988,6 @@ fn draw_equity_curve(
 
         if min_v <= 0.0 && max_v >= 0.0 {
             let zero_y = value_to_y(0.0);
-            axis_override = Some(zero_y);
             svg.push_str(&format!(
                 r##"<line x1="{x1:.2}" y1="{y:.2}" x2="{x2:.2}" y2="{y:.2}" stroke="#000" stroke-width="1" />"##,
                 x1 = PADDING,
@@ -1044,17 +1037,8 @@ fn draw_equity_curve(
         ));
     }
 
-    // For cumulative charts, keep the x-axis aligned to the zero (0%) line when visible.
-    add_time_axis(
-        &mut svg,
-        &returns.dates,
-        &xs,
-        width,
-        height,
-        axis_override,
-        true,
-        false,
-    );
+    // Time axis at bottom; zero reference is drawn inside the plot, like QuantStats.
+    add_time_axis(&mut svg, &returns.dates, &xs, width, height, None, true, false);
 
     if benchmark.is_some() {
         let mut legend = Vec::new();
@@ -1430,8 +1414,8 @@ pub fn eoy_returns(strategy: &ReturnSeries, benchmark: Option<&ReturnSeries>) ->
     };
 
     // Grid lines and labels
-    for tick in ticks {
-        let y = value_to_y(tick);
+    for tick in &ticks {
+        let y = value_to_y(*tick);
         let color = if (tick).abs() < 1e-9 {
             "#000"
         } else {
@@ -1444,12 +1428,32 @@ pub fn eoy_returns(strategy: &ReturnSeries, benchmark: Option<&ReturnSeries>) ->
             y = y,
             color = color
         ));
-        if tick >= 0.0 || color == "#000" {
+        if *tick >= 0.0 || color == "#000" {
             svg.push_str(&format!(
                 r##"<text x="{x:.2}" y="{y:.2}" text-anchor="end" fill="#666" dy="-4">{label}</text>"##,
                 x = left_pad - 6.0,
                 y = y,
-                label = format_percentage(tick)
+                label = format_percentage(*tick)
+            ));
+        }
+    }
+
+    // Mean line for strategy (red dashed), matching QuantStats' EOY chart
+    if !strat_years.is_empty() {
+        let sum: f64 = strat_years.values().copied().filter(|v| v.is_finite()).sum();
+        let count = strat_years
+            .values()
+            .copied()
+            .filter(|v| v.is_finite())
+            .count();
+        if count > 0 {
+            let mean = sum / count as f64;
+            let y_mean = value_to_y(mean);
+            svg.push_str(&format!(
+                r##"<line x1="{x1:.2}" y1="{y:.2}" x2="{x2:.2}" y2="{y:.2}" stroke="#ff0000" stroke-width="1" stroke-dasharray="4 3" />"##,
+                x1 = left_pad,
+                x2 = width - right_pad,
+                y = y_mean
             ));
         }
     }
@@ -1555,10 +1559,15 @@ pub fn daily_returns(returns: &ReturnSeries) -> String {
 }
 
 pub fn drawdown(returns: &ReturnSeries) -> String {
+    if returns.values.is_empty() {
+        return String::new();
+    }
+
+    // Compute underwater series (relative drawdown) as percentages.
     let drawdowns = compute_drawdown(returns);
-    let mut dd_series = returns.clone();
-    dd_series.values = drawdowns;
-    draw_equity_curve(&dd_series, None, "Drawdown (Underwater)", false)
+    // Use the existing line chart helper, which already formats
+    // the y-axis as percentages and adds time-axis labels.
+    draw_line_chart(&returns.dates, &drawdowns, "Drawdown (Underwater)")
 }
 
 pub fn drawdown_periods(returns: &ReturnSeries) -> String {
