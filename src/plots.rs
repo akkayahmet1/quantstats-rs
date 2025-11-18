@@ -276,6 +276,26 @@ fn render_indexed_line_chart(
         ));
     }
 
+    // vertical month grid lines
+    let mut last_month: Option<(i32, u32)> = None;
+    for (idx, date) in range_dates.iter().enumerate() {
+        let key = (date.year(), date.month());
+        if Some(key) == last_month {
+            continue;
+        }
+        last_month = Some(key);
+        if idx >= axis_xs.len() {
+            break;
+        }
+        let x = axis_xs[idx];
+        svg.push_str(&format!(
+            r##"<line x1=\"{x:.2}\" y1=\"{y1:.2}\" x2=\"{x:.2}\" y2=\"{y2:.2}\" stroke=\"#f4f4f4\" stroke-width=\"1\" />"##,
+            x = x,
+            y1 = axis_top,
+            y2 = axis_bottom
+        ));
+    }
+
     for guide in guides {
         let y = scale_value(guide.value, min_v, max_v, height);
         svg.push_str(&format!(
