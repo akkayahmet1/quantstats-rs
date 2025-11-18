@@ -455,15 +455,94 @@ fn draw_line_chart(dates: &[NaiveDate], values: &[f64], title: &str) -> String {
     }
 
     let xs = x_positions(values.len(), width);
-    let ys = scale_series(values, height);
+    let mut min_v = f64::INFINITY;
+    let mut max_v = f64::NEG_INFINITY;
+    for v in values {
+        if !v.is_finite() {
+            continue;
+        }
+        if *v < min_v {
+            min_v = *v;
+        }
+        if *v > max_v {
+            max_v = *v;
+        }
+    }
+    if !min_v.is_finite() || !max_v.is_finite() {
+        min_v = -1.0;
+        max_v = 1.0;
+    }
+    if (max_v - min_v).abs() < 1e-9 {
+        let adjust = if min_v.abs() < 1e-3 {
+            1.0
+        } else {
+            min_v.abs() * 0.1
+        };
+        min_v -= adjust;
+        max_v += adjust;
+    }
+
+    let inner_height = height - 2.0 * PADDING;
+    let value_to_y = |value: f64| {
+        let norm = (value - min_v) / (max_v - min_v);
+        PADDING + (1.0 - norm) * inner_height
+    };
+
+    let ticks = generate_ticks(min_v, max_v);
 
     let mut svg = String::new();
     svg.push_str(&svg_header(WIDTH, HEIGHT));
 
-    let points: Vec<(f64, f64)> = xs.iter().copied().zip(ys.iter().copied()).collect();
-    svg.push_str(&polyline(&points, "#348dc1"));
+    // horizontal grid and y-axis labels
+    let axis_left = PADDING;
+    let axis_top = PADDING;
+    let axis_bottom = height - PADDING;
+    svg.push_str(&format!(
+        r##"<line x1="{x:.2}" y1="{y1:.2}" x2="{x:.2}" y2="{y2:.2}" stroke="#000" stroke-width="1" />"##,
+        x = axis_left,
+        y1 = axis_top,
+        y2 = axis_bottom
+    ));
 
-    add_time_axis(&mut svg, dates, &xs, width, height, None);
+    for tick in &ticks {
+        let y = value_to_y(*tick);
+        let stroke = if tick.abs() < 1e-9 { "#000" } else { "#eeeeee" };
+        svg.push_str(&format!(
+            r##"<line x1="{x1:.2}" y1="{y:.2}" x2="{x2:.2}" y2="{y:.2}" stroke="{stroke}" stroke-width="1" />"##,
+            x1 = axis_left,
+            x2 = width - PADDING,
+            y = y,
+            stroke = stroke
+        ));
+        svg.push_str(&format!(
+            r##"<line x1="{x1:.2}" y1="{y:.2}" x2="{x2:.2}" y2="{y:.2}" stroke="#000" stroke-width="1" />"##,
+            x1 = axis_left - 4.0,
+            x2 = axis_left,
+            y = y
+        ));
+        svg.push_str(&format!(
+            r##"<text x="{x:.2}" y="{y:.2}" text-anchor="end" fill="#333">{label}</text>"##,
+            x = axis_left - 6.0,
+            y = y - 2.0,
+            label = format_percentage(*tick)
+        ));
+    }
+
+    let mut points = Vec::new();
+    for (idx, value) in values.iter().enumerate() {
+        if !value.is_finite() || idx >= xs.len() {
+            continue;
+        }
+        points.push((xs[idx], value_to_y(*value)));
+    }
+    svg.push_str(&polyline(&points, "#348dc1"));
+    let axis_override = if min_v <= 0.0 && max_v >= 0.0 {
+        Some(value_to_y(0.0))
+    } else {
+        None
+    };
+
+    add_time_axis(&mut svg, dates, &xs, width, height, axis_override);
 
     svg.push_str(svg_footer());
     wrap_plot(title, svg)
