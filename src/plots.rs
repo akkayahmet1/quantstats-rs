@@ -262,7 +262,12 @@ fn render_indexed_line_chart(
         y2 = axis_bottom
     ));
     for tick in &ticks {
-        let y = scale_value(*tick, min_v, max_v, height);
+        let mut y = scale_value(*tick, min_v, max_v, height);
+        if y < axis_top {
+            y = axis_top;
+        } else if y > axis_bottom {
+            y = axis_bottom;
+        }
         let stroke = if tick.abs() < 1e-9 { "#000" } else { "#eeeeee" };
         svg.push_str(&format!(
             r##"<line x1=\"{x1:.2}\" y1=\"{y:.2}\" x2=\"{x2:.2}\" y2=\"{y:.2}\" stroke=\"{stroke}\" stroke-width=\"1\" />"##,
@@ -280,7 +285,7 @@ fn render_indexed_line_chart(
         svg.push_str(&format!(
             r##"<text x=\"{x:.2}\" y=\"{y:.2}\" text-anchor=\"end\" fill=\"#333\">{label}</text>"##,
             x = axis_left - 6.0,
-            y = y - 2.0,
+            y = (y - 2.0).max(axis_top + 4.0).min(axis_bottom - 4.0),
             label = format_axis_value(*tick, format_percent)
         ));
     }
