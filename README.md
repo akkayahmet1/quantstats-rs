@@ -4,15 +4,7 @@
 from return time series. It aims to closely match the behaviour and visuals of the original
 Python [QuantStats](https://github.com/ranaroussi/quantstats) project.
 
-The repository also includes pre-generated example reports:
-
-- <a href="tearsheet.html" title="Strategy-only Tearsheet">tearsheet.html</a> – strategy only
-- <a href="tearsheet_with_benchmark.html" title="Strategy vs Benchmark Tearsheet">tearsheet_with_benchmark.html</a> – strategy vs benchmark
-
-You can open these directly in a browser to see what the library produces.
-
 Preview of the benchmark tear sheet:
-
 ![Quantstats-rs demo tear sheet with benchmark](tearsheet_with_benchmark.png)
 
 ## Features
@@ -62,13 +54,11 @@ From the repository root:
 ```bash
 cargo build
 
-# Strategy-only demo report
+# Strategy-only demo report (writes `tearsheet.html`)
 cargo run --example html_report
-# Output: tearsheet.html
 
-# Strategy + benchmark demo report
+# Strategy + benchmark demo report (writes `tearsheet_with_benchmark.html`)
 cargo run --example html_with_benchmark
-# Output: tearsheet_with_benchmark.html
 
 # Tests (if present)
 cargo test

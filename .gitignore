@@ -1,7 +1,6 @@
 /target
 /third_party
 /*.html
-!/tearsheet*.html
 /data
 /.vs_
 /.qs-venv

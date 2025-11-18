@@ -47,23 +47,17 @@ Rust 版本的 [QuantStats](https://github.com/ranaroussi/quantstats) 风格绩�
 ```bash
 cargo build
 
-# 生成仅策略的报告
+# 生成仅策略的报告（写入 `tearsheet.html`）
 cargo run --example html_report
-# 输出：tearsheet.html
 
-# 生成“策略 + 基准”的报告
+# 生成“策略 + 基准”的报告（写入 `tearsheet_with_benchmark.html`）
 cargo run --example html_with_benchmark
-# 输出：tearsheet_with_benchmark.html
 
 # 运行测试（如有）
 cargo test
 ```
 
 生成的 HTML 可以直接用浏览器打开，与 Python 版 QuantStats 输出进行肉眼对比。
-仓库根目录已附带示例报告：
-
-- <a href="tearsheet.html" title="策略示例 Tearsheet">tearsheet.html</a>（仅策略）
-- <a href="tearsheet_with_benchmark.html" title="策略 vs 基准 Tearsheet">tearsheet_with_benchmark.html</a>（策略 + 基准）
 
 ## 作为库使用
 
