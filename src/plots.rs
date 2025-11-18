@@ -739,7 +739,7 @@ fn draw_line_chart(dates: &[NaiveDate], values: &[f64], title: &str) -> String {
     svg.push_str(&polyline(&points, "#348dc1"));
 
     // Time axis is always drawn at the bottom, matching QuantStats.
-    add_time_axis(&mut svg, dates, &xs, width, height, None, true, false);
+    add_time_axis(&mut svg, dates, &xs, width, height, None, false, false);
 
     svg.push_str(svg_footer());
     wrap_plot(title, svg)
@@ -1037,8 +1037,8 @@ fn draw_equity_curve(
         ));
     }
 
-    // Time axis at bottom; zero reference is drawn inside the plot, like QuantStats.
-    add_time_axis(&mut svg, &returns.dates, &xs, width, height, None, true, false);
+    // Time axis at bottom (ticks + labels only); zero reference is drawn inside the plot.
+    add_time_axis(&mut svg, &returns.dates, &xs, width, height, None, false, false);
 
     if benchmark.is_some() {
         let mut legend = Vec::new();
@@ -1139,7 +1139,7 @@ fn draw_bar_chart_with_dates(series: &ReturnSeries, title: &str) -> String {
         ));
     }
 
-    add_time_axis(&mut svg, &series.dates, &xs, width, height, None, true, false);
+    add_time_axis(&mut svg, &series.dates, &xs, width, height, None, false, false);
 
     svg.push_str(svg_footer());
     wrap_plot(title, svg)
@@ -1738,16 +1738,7 @@ pub fn drawdown_periods(returns: &ReturnSeries) -> String {
             .join(" ")
     ));
 
-    add_time_axis(
-        &mut svg,
-        &returns.dates,
-        &xs,
-        width,
-        height,
-        None,
-        true,
-        false,
-    );
+    add_time_axis(&mut svg, &returns.dates, &xs, width, height, None, false, false);
 
     svg.push_str(svg_footer());
     wrap_plot("Strategy - Worst 5 Drawdown Periods", svg)
