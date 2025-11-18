@@ -186,6 +186,14 @@ fn draw_line_legend(svg: &mut String, entries: &[LegendEntry], _width: f64) {
     }
 }
 
+fn format_axis_value(value: f64, percent: bool) -> String {
+    if percent {
+        format_percentage(value)
+    } else {
+        format!("{value:.2}")
+    }
+}
+
 fn render_indexed_line_chart(
     dates: &[NaiveDate],
     series_list: &[IndexedSeries],
@@ -194,6 +202,7 @@ fn render_indexed_line_chart(
     include_zero: bool,
     show_zero_line: bool,
     show_legend: bool,
+    format_percent: bool,
 ) -> String {
     if dates.is_empty() || series_list.is_empty() {
         return String::new();
@@ -272,7 +281,7 @@ fn render_indexed_line_chart(
             r##"<text x=\"{x:.2}\" y=\"{y:.2}\" text-anchor=\"end\" fill=\"#333\">{label}</text>"##,
             x = axis_left - 6.0,
             y = y - 2.0,
-            label = format_percentage(*tick)
+            label = format_axis_value(*tick, format_percent)
         ));
     }
 
@@ -2340,6 +2349,7 @@ pub fn rolling_volatility(
         false,
         false,
         series.len() > 1,
+        true,
     )
 }
 
@@ -2405,6 +2415,7 @@ pub fn rolling_sharpe(returns: &ReturnSeries, rf: f64, periods_per_year: u32) ->
         true,
         true,
         false,
+        false,
     )
 }
 
@@ -2466,6 +2477,7 @@ pub fn rolling_sortino(returns: &ReturnSeries, rf: f64, periods_per_year: u32) -
         "Rolling Sortino (6-Months)",
         true,
         true,
+        false,
         false,
     )
 }
@@ -2535,6 +2547,7 @@ pub fn rolling_beta(
         true,
         true,
         true,
+        false,
     )
 }
 
