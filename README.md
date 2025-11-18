@@ -2,13 +2,12 @@
 
 `quantstats-rs` is a Rust library that generates QuantStats-style HTML performance tear sheets
 from return time series. It aims to closely match the behaviour and visuals of the original
-Python [QuantStats](https://github.com/ranaroussi/quantstats) project, using the vendored
-Python implementation in `third_party/quantstats/` as a reference.
+Python [QuantStats](https://github.com/ranaroussi/quantstats) project.
 
 The repository also includes pre-generated example reports:
 
-- [`tearsheet.html`](tearsheet.html) – strategy only
-- [`tearsheet_with_benchmark.html`](tearsheet_with_benchmark.html) – strategy vs benchmark
+- <a href="tearsheet.html" title="Strategy-only Tearsheet">tearsheet.html</a> – strategy only
+- <a href="tearsheet_with_benchmark.html" title="Strategy vs Benchmark Tearsheet">tearsheet_with_benchmark.html</a> – strategy vs benchmark
 
 You can open these directly in a browser to see what the library produces.
 
@@ -22,11 +21,11 @@ You can open these directly in a browser to see what the library produces.
   - Max / average drawdown, longest drawdown
   - Gain-to-Pain and related ratios
 - Charts (SVG, embedded in the HTML):
-  - Cumulative Returns / Cumulative Returns vs Benchmark  
+  - Cumulative Returns / Cumulative Returns vs Benchmark
     (including log-scaled and volatility-matched variants)
   - Daily Returns (Cumulative Sum)
   - Rolling Volatility / Rolling Sharpe / Rolling Sortino / Rolling Beta
-  - Drawdown (Underwater)  
+  - Drawdown (Underwater)
     (average drawdown red dashed line, filled area below 0%)
   - Strategy – Worst 5 Drawdown Periods
   - EOY Returns / EOY Returns vs Benchmark (with red dashed mean line)
@@ -51,7 +50,6 @@ You can open these directly in a browser to see what the library produces.
   - `common.rs` – shared demo data, generated from `data/` by the script.
 - `data/` – CSVs / time series used to build the example report.
 - `scripts/gen_examples_common.py` – generates `examples/common.rs` from `data/`.
-- `third_party/quantstats/` – vendored Python QuantStats, used only for reference / validation.
 
 ## Build & Run
 
@@ -166,4 +164,3 @@ PR and mention:
 - Which chart (title),
 - Which part differs (axis range, grid, colours, etc.),
 - Optionally, a snippet or screenshot from the Python-generated HTML.
-

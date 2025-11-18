@@ -55,8 +55,11 @@ cargo run --example html_with_benchmark
 cargo test
 ```
 
-生成的 HTML 可以直接用浏览器打开，与 Python 版 QuantStats 输出进行肉眼对比。
-仓库根目录已附带一个示例报告 [`tearsheet_with_benchmark.html`](tearsheet_with_benchmark.html)。
+生成的 HTML 可以直接用浏览器打开，与 Python 版 QuantStats 输出进行肉眼对比。  
+仓库根目录已附带示例报告：
+
+- <a href="tearsheet.html" title="策略示例 Tearsheet">tearsheet.html</a>（仅策略）  
+- <a href="tearsheet_with_benchmark.html" title="策略 vs 基准 Tearsheet">tearsheet_with_benchmark.html</a>（策略 + 基准）  
 
 ## 作为库使用
 
