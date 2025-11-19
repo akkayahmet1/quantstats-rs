@@ -1694,6 +1694,14 @@ pub fn drawdown(returns: &ReturnSeries) -> String {
         ));
     }
 
+    // Emphasize the 0% axis at the top as a black dashed line, matching QuantStats.
+    svg.push_str(&format!(
+        r##"<line x1="{x1:.2}" y1="{y:.2}" x2="{x2:.2}" y2="{y:.2}" stroke="#000" stroke-width="1" stroke-dasharray="4 3" />"##,
+        x1 = axis_left,
+        x2 = width - PADDING,
+        y = zero_y
+    ));
+
     // Draw underwater line (solid).
     let mut points = Vec::new();
     for (i, x) in xs.iter().enumerate() {
@@ -1868,14 +1876,6 @@ pub fn drawdown_periods(returns: &ReturnSeries) -> String {
         ));
     }
 
-    let zero_y = value_to_y(0.0);
-    svg.push_str(&format!(
-        r##"<line x1="{x1:.2}" y1="{y:.2}" x2="{x2:.2}" y2="{y:.2}" stroke="#bbbbbb" stroke-width="1" stroke-dasharray="4 3" />"##,
-        x1 = PADDING,
-        x2 = width - PADDING,
-        y = zero_y
-    ));
-
     let mut date_index = HashMap::new();
     for (idx, date) in returns.dates.iter().enumerate() {
         date_index.insert(*date, idx);
@@ -1909,6 +1909,15 @@ pub fn drawdown_periods(returns: &ReturnSeries) -> String {
             label = format!("{}: {}d", idx + 1, seg.duration)
         ));
     }
+
+    // Draw 0% reference line on top of the drawdown bands so it remains visible.
+    let zero_y = value_to_y(0.0);
+    svg.push_str(&format!(
+        r##"<line x1="{x1:.2}" y1="{y:.2}" x2="{x2:.2}" y2="{y:.2}" stroke="#bbbbbb" stroke-width="1" stroke-dasharray="4 3" />"##,
+        x1 = PADDING,
+        x2 = width - PADDING,
+        y = zero_y
+    ));
 
     let points: Vec<(f64, f64)> = xs
         .iter()
@@ -3019,16 +3028,28 @@ pub fn monthly_heatmap(returns: &ReturnSeries) -> String {
             let x_left = left_pad + month_idx as f64 * cell_w;
 
             if let Some(v) = monthly.get(&key) {
-                let t_raw = (v.abs() / max_abs).min(1.0);
-                let t = 0.2 + 0.8 * t_raw; // keep a minimum intensity
-                let (br, bg, bb) = if *v >= 0.0 {
-                    (79.0, 164.0, 135.0) // greenish
+                // Diverging palette around 0:
+                // - near 0%: soft yellow
+                // - large positive: more green
+                // - large negative: more red
+                let t = (v.abs() / max_abs).min(1.0);
+
+                // Base (near zero) colour: soft yellow
+                let (yr, yg, yb) = (255.0, 244.0, 194.0);
+                // Positive extreme: greenish
+                let (gr, gg, gb) = (79.0, 164.0, 135.0);
+                // Negative extreme: reddish
+                let (rr, rg, rb) = (175.0, 75.0, 100.0);
+
+                let (tr, tg, tb) = if *v >= 0.0 {
+                    (gr, gg, gb)
                 } else {
-                    (175.0, 75.0, 100.0) // reddish
+                    (rr, rg, rb)
                 };
-                let r = 255.0 * (1.0 - t) + br * t;
-                let g = 255.0 * (1.0 - t) + bg * t;
-                let b = 255.0 * (1.0 - t) + bb * t;
+
+                let r = yr + (tr - yr) * t;
+                let g = yg + (tg - yg) * t;
+                let b = yb + (tb - yb) * t;
 
                 svg.push_str(&format!(
                     r##"<rect x="{x:.2}" y="{y:.2}" width="{w:.2}" height="{h:.2}" fill="rgb({r:.0},{g:.0},{b:.0})" />"##,
@@ -3043,7 +3064,10 @@ pub fn monthly_heatmap(returns: &ReturnSeries) -> String {
 
                 // Percentage text inside the cell.
                 let val = *v * 100.0;
-                let text_color = if t > 0.6 { "#ffffff" } else { "#262626" };
+                // Choose white text on dark cells, dark text on light cells,
+                // based on perceived luminance of the fill colour.
+                let luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+                let text_color = if luminance < 160.0 { "#ffffff" } else { "#262626" };
                 let tx = x_left + cell_w / 2.0;
                 let ty = y_center + 4.0;
                 svg.push_str(&format!(
