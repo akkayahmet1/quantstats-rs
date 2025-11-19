@@ -2316,7 +2316,17 @@ pub fn monthly_distribution(returns: &ReturnSeries, benchmark: Option<&ReturnSer
         return String::new();
     }
 
-    let build_bars = |counts: &[usize], color_pos: &str, color_neg: &str| {
+    // Internal bar representation for easier overlap handling.
+    struct Bar {
+        idx: usize,
+        x: f64,
+        y: f64,
+        w: f64,
+        h: f64,
+        color: String,
+    }
+
+    let build_bars = |counts: &[usize], color_pos: &str, color_neg: &str| -> Vec<Bar> {
         let mut bars = Vec::new();
         for (idx, count) in counts.iter().enumerate() {
             if *count == 0 {
@@ -2328,18 +2338,21 @@ pub fn monthly_distribution(returns: &ReturnSeries, benchmark: Option<&ReturnSer
             let y = top_pad + (inner_height - bar_height);
             let mid = min_tick + (idx as f64 + 0.5) * bin_width;
             let color = if mid >= 0.0 { color_pos } else { color_neg };
-            bars.push((
-                x + slot_width * 0.05,
+            bars.push(Bar {
+                idx,
+                x: x + slot_width * 0.05,
                 y,
-                slot_width * 0.9,
-                bar_height,
-                color.to_string(),
-            ));
+                w: slot_width * 0.9,
+                h: bar_height,
+                color: color.to_string(),
+            });
         }
         bars
     };
 
-    let strat_bars = build_bars(&strat_counts, "#4fa487", "#af4b64");
+    // Strategy bars: always use STRATEGY_COLOR (both sides of 0),
+    // overlap region will be highlighted separately.
+    let strat_bars = build_bars(&strat_counts, STRATEGY_COLOR, STRATEGY_COLOR);
     let bench_bars = bench_counts
         .as_ref()
         .map(|counts| build_bars(counts, BENCHMARK_COLOR, BENCHMARK_COLOR));
@@ -2426,33 +2439,61 @@ pub fn monthly_distribution(returns: &ReturnSeries, benchmark: Option<&ReturnSer
     ));
 
     // draw bars (benchmark first so strategy overlays)
-    if let Some(bars) = bench_bars {
-        for (x, y, w, h, color) in bars {
+    if let Some(ref bars) = bench_bars {
+        for bar in bars {
             svg.push_str(&format!(
                 r##"<rect x="{x:.2}" y="{y:.2}" width="{w:.2}" height="{h:.2}" fill="{color}" fill-opacity="0.6" />"##,
-                x = x,
-                y = y,
-                w = w,
-                h = h,
-                color = color
+                x = bar.x,
+                y = bar.y,
+                w = bar.w,
+                h = bar.h,
+                color = bar.color
             ));
         }
     }
-    for (x, y, w, h, color) in strat_bars {
+    for bar in &strat_bars {
         svg.push_str(&format!(
             r##"<rect x="{x:.2}" y="{y:.2}" width="{w:.2}" height="{h:.2}" fill="{color}" />"##,
-            x = x,
-            y = y,
-            w = w,
-            h = h,
-            color = color
+            x = bar.x,
+            y = bar.y,
+            w = bar.w,
+            h = bar.h,
+            color = bar.color
         ));
+    }
+
+    // Overlap highlight: where strategy and benchmark bars overlap in a bin,
+    // draw the intersection region with a neutral blend color.
+    if let Some(ref bench_vec) = bench_bars {
+        let mut bench_by_idx: HashMap<usize, &Bar> = HashMap::new();
+        for bar in bench_vec {
+            bench_by_idx.insert(bar.idx, bar);
+        }
+
+        for s in &strat_bars {
+            if let Some(b) = bench_by_idx.get(&s.idx) {
+                let s_bottom = s.y + s.h;
+                let b_bottom = b.y + b.h;
+                let top = s.y.max(b.y);
+                let bottom = s_bottom.min(b_bottom);
+                if bottom > top {
+                    let overlap_h = bottom - top;
+                    svg.push_str(&format!(
+                        r##"<rect x="{x:.2}" y="{y:.2}" width="{w:.2}" height="{h:.2}" fill="#d6d096" />"##,
+                        x = s.x,
+                        y = top,
+                        w = s.w,
+                        h = overlap_h
+                    ));
+                }
+            }
+        }
     }
 
     if let Some(ref bench_density) = bench_density {
         svg.push_str(&density_to_svg(bench_density, BENCHMARK_COLOR));
     }
-    svg.push_str(&density_to_svg(&strat_density, "#4fa487"));
+    svg.push_str(&density_to_svg(&strat_density, STRATEGY_COLOR));
 
     // Y axis (count scale)
     let axis_bottom = height - bottom_pad;
@@ -2526,9 +2567,10 @@ pub fn monthly_distribution(returns: &ReturnSeries, benchmark: Option<&ReturnSer
         entry_y += 16.0;
     }
     svg.push_str(&format!(
-        r##"<rect x="{x:.2}" y="{y:.2}" width="12" height="12" fill="#4fa487" />"##,
+        r##"<rect x="{x:.2}" y="{y:.2}" width="12" height="12" fill="{color}" />"##,
         x = legend_x,
-        y = entry_y
+        y = entry_y,
+        color = STRATEGY_COLOR
     ));
     svg.push_str(&format!(
         r##"<text x="{x:.2}" y="{y:.2}" text-anchor="start" fill="#333">Strategy</text>"##,
