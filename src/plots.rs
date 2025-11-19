@@ -424,7 +424,7 @@ fn render_indexed_line_chart(
 
 fn svg_header(width: i32, height: i32) -> String {
     format!(
-        r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {w} {h}"><style>text{{font-family:Arial,sans-serif;font-size:10px;fill:#666}}</style>"#,
+        r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {w} {h}"><style>text{{font-family:Arial,sans-serif;font-size:10px;}}</style>"#,
         w = width,
         h = height
     )
