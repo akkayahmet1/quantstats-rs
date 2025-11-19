@@ -1,5 +1,9 @@
 # quantstats-rs
 
+[![Crates.io](https://img.shields.io/crates/v/quantstats-rs)](https://crates.io/crates/quantstats-rs)
+[![Docs.rs](https://docs.rs/quantstats-rs/badge.svg)](https://docs.rs/quantstats-rs)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 Rust 版本的 [QuantStats](https://github.com/ranaroussi/quantstats) 风格绩效报表库，用于从收益率时间序列生成 HTML tear sheet。
 本仓库以 Python QuantStats的实现和输出为对照，尽量在数值和图表上做到一一对应。
 
@@ -61,11 +65,11 @@ cargo test
 
 ## 作为库使用
 
-在你的项目 `Cargo.toml` 中通过 path 引用本 crate（根据实际路径调整）：
+在你的项目 `Cargo.toml` 中从 crates.io 引用本 crate：
 
 ```toml
 [dependencies]
-quantstats-rs = { path = "../quantstats-rs" }
+quantstats-rs = "0.1"
 ```
 
 在代码中：

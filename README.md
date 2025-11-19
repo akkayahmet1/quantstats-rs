@@ -1,5 +1,9 @@
 # quantstats-rs
 
+[![Crates.io](https://img.shields.io/crates/v/quantstats-rs)](https://crates.io/crates/quantstats-rs)
+[![Docs.rs](https://docs.rs/quantstats-rs/badge.svg)](https://docs.rs/quantstats-rs)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 `quantstats-rs` is a Rust library that generates QuantStats-style HTML performance tear sheets
 from return time series. It aims to closely match the behaviour and visuals of the original
 Python [QuantStats](https://github.com/ranaroussi/quantstats) project.
@@ -69,11 +73,11 @@ reports produced by the Python QuantStats library.
 
 ## Library Usage
 
-Add a dependency (path here assumes your project is a sibling of this repo):
+Add a dependency from crates.io:
 
 ```toml
 [dependencies]
-quantstats-rs = { path = "../quantstats-rs" }
+quantstats-rs = "0.1"
 ```
 
 Basic usage in Rust:

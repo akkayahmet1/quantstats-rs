@@ -1,7 +1,24 @@
 [package]
 name = "quantstats-rs"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
+description = "Rust implementation of QuantStats-style performance tear sheets with SVG charts and HTML reports."
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/netcan/quantstats-rs"
+homepage = "https://github.com/netcan/quantstats-rs"
+documentation = "https://docs.rs/quantstats-rs"
+keywords = ["quant", "backtest", "finance", "performance", "tearsheet"]
+categories = ["finance", "visualization", "data-structures"]
+exclude = [
+    "third_party/**",
+    "data/**",
+    "scripts/**",
+    "mm.log",
+    ".qs-venv/**",
+    ".venv/**",
+    "target/**",
+]
 
 [dependencies]
 chrono = "0.4"
