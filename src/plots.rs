@@ -1499,11 +1499,12 @@ pub fn eoy_returns(strategy: &ReturnSeries, benchmark: Option<&ReturnSeries>) ->
                 let x = cx - bar_area / 2.0;
                 let h = (bottom - top).abs();
                 svg.push_str(&format!(
-                    r##"<rect x="{x:.2}" y="{y:.2}" width="{w:.2}" height="{h:.2}" fill="#ff9933" />"##,
+                    r##"<rect x="{x:.2}" y="{y:.2}" width="{w:.2}" height="{h:.2}" fill="{color}" />"##,
                     x = x,
                     y = top,
                     w = bar_width,
-                    h = h
+                    h = h,
+                    color = BENCHMARK_COLOR
                 ));
             }
         }
@@ -1522,11 +1523,12 @@ pub fn eoy_returns(strategy: &ReturnSeries, benchmark: Option<&ReturnSeries>) ->
             };
             let h = (bottom - top).abs();
             svg.push_str(&format!(
-                r##"<rect x="{x:.2}" y="{y:.2}" width="{w:.2}" height="{h:.2}" fill="#348dc1" />"##,
+                r##"<rect x="{x:.2}" y="{y:.2}" width="{w:.2}" height="{h:.2}" fill="{color}" />"##,
                 x = x,
                 y = top,
                 w = bar_width,
-                h = h
+                h = h,
+                color = STRATEGY_COLOR
             ));
         }
     }
@@ -2345,7 +2347,7 @@ pub fn monthly_distribution(returns: &ReturnSeries, benchmark: Option<&ReturnSer
     let strat_bars = build_bars(&strat_counts, "#4fa487", "#af4b64");
     let bench_bars = bench_counts
         .as_ref()
-        .map(|counts| build_bars(counts, "#ff9933", "#c96a40"));
+        .map(|counts| build_bars(counts, BENCHMARK_COLOR, BENCHMARK_COLOR));
 
     let density_points = 180;
     let xs: Vec<f64> = (0..=density_points)
@@ -2453,7 +2455,7 @@ pub fn monthly_distribution(returns: &ReturnSeries, benchmark: Option<&ReturnSer
     }
 
     if let Some(ref bench_density) = bench_density {
-        svg.push_str(&density_to_svg(bench_density, "#ff9933"));
+        svg.push_str(&density_to_svg(bench_density, BENCHMARK_COLOR));
     }
     svg.push_str(&density_to_svg(&strat_density, "#4fa487"));
 
@@ -2516,9 +2518,10 @@ pub fn monthly_distribution(returns: &ReturnSeries, benchmark: Option<&ReturnSer
     let mut entry_y = legend_y;
     if monthly_bench.is_some() {
         svg.push_str(&format!(
-            r##"<rect x="{x:.2}" y="{y:.2}" width="12" height="12" fill="#ff9933" fill-opacity="0.6" />"##,
+            r##"<rect x="{x:.2}" y="{y:.2}" width="12" height="12" fill="{color}" fill-opacity="0.6" />"##,
             x = legend_x,
-            y = entry_y
+            y = entry_y,
+            color = BENCHMARK_COLOR
         ));
         svg.push_str(&format!(
             r##"<text x="{x:.2}" y="{y:.2}" text-anchor="start" fill="#333">Benchmark</text>"##,
