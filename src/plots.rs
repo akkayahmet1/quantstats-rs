@@ -1895,7 +1895,7 @@ pub fn drawdown_periods(returns: &ReturnSeries) -> String {
             (x2, (x1 - x2).max(1.0))
         };
         svg.push_str(&format!(
-            r##"<rect x="{x:.2}" y="{y:.2}" width="{w:.2}" height="{h:.2}" fill="#af4b64" fill-opacity="0.12" />"##,
+            r##"<rect x="{x:.2}" y="{y:.2}" width="{w:.2}" height="{h:.2}" fill="#ffeae8" />"##,
             x = x_left,
             y = PADDING,
             w = width_rect,
