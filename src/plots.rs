@@ -9,7 +9,7 @@ const WIDTH: i32 = 576;
 const HEIGHT: i32 = 288;
 const PADDING: f64 = 36.0;
 const STRATEGY_COLOR: &str = "#348dc1";
-const BENCHMARK_COLOR: &str = "#ff9933";
+const BENCHMARK_COLOR: &str = "#fedd78";
 const ACCENT_COLOR: &str = "#8c8c8c";
 const MEAN_GUIDE_COLOR: &str = "#ff0000";
 
