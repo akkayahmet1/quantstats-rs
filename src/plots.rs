@@ -88,18 +88,13 @@ fn generate_ticks(min_v: f64, max_v: f64) -> Vec<f64> {
         max += adjust;
     }
 
-    let axis_min = min;
-    let axis_max = max;
-
-    let step = nice_step((axis_max - axis_min) / 4.0);
-    let start = (axis_min / step).floor() * step;
-    let end = (axis_max / step).ceil() * step;
+    let step = nice_step((max - min) / 4.0);
+    let start = (min / step).floor() * step;
+    let end = (max / step).ceil() * step;
     let mut ticks = Vec::new();
     let mut val = start;
     while val <= end + 1e-9 {
-        if val >= axis_min - 1e-9 && val <= axis_max + 1e-9 {
-            ticks.push(val);
-        }
+        ticks.push(val);
         val += step;
     }
     ticks
@@ -1376,7 +1371,7 @@ pub fn eoy_returns(strategy: &ReturnSeries, benchmark: Option<&ReturnSeries>) ->
     let height = HEIGHT as f64;
     let left_pad = 65.0;
     let right_pad = 30.0;
-    let top_pad = 50.0;
+    let top_pad = 60.0;
     let bottom_pad = 50.0;
 
     // Collect all values to determine vertical scale.
